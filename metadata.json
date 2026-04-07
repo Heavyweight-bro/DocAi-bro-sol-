@@ -1,0 +1,5 @@
+{
+  "name": "DocuParse AI",
+  "description": "An application for parsing and extracting structured JSON data from various document types (PDF, Word, Excel, Scans) using AI. Includes an API endpoint for automated extraction.",
+  "requestFramePermissions": []
+}
