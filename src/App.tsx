@@ -50,7 +50,7 @@ export default function App() {
 
   const fetchTypes = async () => {
     try {
-      const res = await fetch('/api/types');
+      const res = await fetch('https://doc-ai-gamma.vercel.app/api/types');
       if (res.ok) {
         const contentType = res.headers.get('content-type');
         if (contentType && contentType.includes('application/json')) {
@@ -64,7 +64,7 @@ export default function App() {
 
   const fetchDocuments = async () => {
     try {
-      const res = await fetch('/api/documents');
+      const res = await fetch('https://doc-ai-gamma.vercel.app/api/documents');
       if (res.ok) {
         const contentType = res.headers.get('content-type');
         if (contentType && contentType.includes('application/json')) {
@@ -109,7 +109,7 @@ export default function App() {
     }
 
     try {
-      const res = await fetch('/api/parse', {
+      const res = await fetch('https://doc-ai-gamma.vercel.app/api/parse', {
         method: 'POST',
         body: formData,
       });
@@ -163,7 +163,7 @@ export default function App() {
     setError(null);
 
     try {
-      const res = await fetch('/api/types', {
+      const res = await fetch('https://doc-ai-gamma.vercel.app/api/types', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newTypeName, slug: newTypeSlug, prompt: newTypePrompt }),
@@ -201,7 +201,7 @@ export default function App() {
     setError(null);
 
     try {
-      const res = await fetch(`/api/types/${editingTypeId}`, {
+      const res = await fetch(`https://doc-ai-gamma.vercel.app/api/types/${editingTypeId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newTypeName, slug: newTypeSlug, prompt: newTypePrompt }),
@@ -249,7 +249,7 @@ export default function App() {
   const handleDeleteType = async (id: number) => {
     if (!confirm('Ви впевнені, що хочете видалити цей шаблон?')) return;
     try {
-      await fetch(`/api/types/${id}`, { method: 'DELETE' });
+      await fetch(`https://doc-ai-gamma.vercel.app/api/types/${id}`, { method: 'DELETE' });
       await fetchTypes();
       if (selectedTypeSlug === documentTypes.find(t => t.id === id)?.slug) {
         setSelectedTypeSlug('custom');
