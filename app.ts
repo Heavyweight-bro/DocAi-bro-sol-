@@ -7,6 +7,9 @@ import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
 import mammoth from "mammoth";
 import * as xlsx from "xlsx";
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
+const pdfParse = require("pdf-parse");
 
 // Initialize Supabase
 const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -184,12 +187,12 @@ app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (r
         config: { responseMimeType: "application/json" }
       });
       extractedDataStr = response.text || "{}";
-    } catch (geminiError) {
-      console.error("Gemini API failed, falling back to OpenAI:", geminiError);
+    } catch (geminiError: any) {
+      console.error("Gemini API failed, falling back to OpenAI:", geminiError?.message || geminiError);
       
       const openAiKey = process.env.OPENAI_API_KEY;
       if (!openAiKey) {
-        throw new Error("Gemini API failed and OPENAI_API_KEY is not configured.");
+        throw new Error(`Gemini API failed (${geminiError?.message || 'Unknown error'}) and OPENAI_API_KEY is not configured.`);
       }
       
       const openai = new OpenAI({ apiKey: openAiKey });
@@ -199,13 +202,21 @@ app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (r
       ];
       
       if (isMultimodal && inlineData) {
-        openAiMessages.push({
-          role: "user",
-          content: [
-            { type: "text", text: defaultPrompt },
-            { type: "image_url", image_url: { url: `data:${inlineData.mimeType};base64,${inlineData.data}` } }
-          ]
-        });
+        if (inlineData.mimeType === "application/pdf") {
+          const pdfData = await pdfParse(file.buffer);
+          openAiMessages.push({
+            role: "user",
+            content: `Вміст документа:\n${pdfData.text}\n\n${defaultPrompt}`
+          });
+        } else {
+          openAiMessages.push({
+            role: "user",
+            content: [
+              { type: "text", text: defaultPrompt },
+              { type: "image_url", image_url: { url: `data:${inlineData.mimeType};base64,${inlineData.data}` } }
+            ]
+          });
+        }
       } else {
         openAiMessages.push({
           role: "user",
