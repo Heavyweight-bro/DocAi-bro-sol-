@@ -145,110 +145,147 @@ app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (r
     }
 
     const mimeType = file.mimetype;
-    let extractedText = "";
-    let isMultimodal = false;
-    let inlineData: any = null;
+    let extractedData = {};
+    let parseStatus = 'success';
+    let errorMessage = '';
 
-    if (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || mimeType === "application/msword") {
-      const result = await mammoth.extractRawText({ buffer: file.buffer });
-      extractedText = result.value;
-    } else if (mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || mimeType === "application/vnd.ms-excel") {
-      const workbook = xlsx.read(file.buffer, { type: "buffer" });
-      const sheetName = workbook.SheetNames[0];
-      const sheet = workbook.Sheets[sheetName];
-      const jsonData = xlsx.utils.sheet_to_json(sheet);
-      extractedText = JSON.stringify(jsonData);
-    } else if (mimeType === "application/pdf" || mimeType.startsWith("image/")) {
-      isMultimodal = true;
-      inlineData = {
-        data: file.buffer.toString("base64"),
-        mimeType: mimeType,
-      };
-    } else {
-      extractedText = file.buffer.toString("utf-8");
-    }
-
-    const defaultPrompt = prompt || "Витягни всю ключову інформацію з цього документа та структуруй її у JSON об'єкт.";
-    const contents: any = { parts: [] };
-
-    if (isMultimodal && inlineData) {
-      contents.parts.push({ inlineData });
-    } else {
-      contents.parts.push({ text: `Вміст документа:\n${extractedText}\n\n` });
-    }
-    contents.parts.push({ text: defaultPrompt });
-
-    let extractedDataStr = "{}";
     try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3.1-pro-preview",
-        contents: contents,
-        config: { responseMimeType: "application/json" }
-      });
-      extractedDataStr = response.text || "{}";
-    } catch (geminiError: any) {
-      console.error("Gemini API failed, falling back to OpenAI:", geminiError?.message || geminiError);
-      
-      const openAiKey = process.env.OPENAI_API_KEY;
-      if (!openAiKey) {
-        throw new Error(`Gemini API failed (${geminiError?.message || 'Unknown error'}) and OPENAI_API_KEY is not configured.`);
+      let extractedText = "";
+      let isMultimodal = false;
+      let inlineData: any = null;
+
+      if (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || mimeType === "application/msword") {
+        const result = await mammoth.extractRawText({ buffer: file.buffer });
+        extractedText = result.value;
+      } else if (mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || mimeType === "application/vnd.ms-excel" || mimeType === "application/json") {
+        if (mimeType === "application/json") {
+          extractedText = file.buffer.toString("utf-8");
+        } else {
+          const workbook = xlsx.read(file.buffer, { type: "buffer" });
+          const sheetName = workbook.SheetNames[0];
+          const sheet = workbook.Sheets[sheetName];
+          const jsonData = xlsx.utils.sheet_to_json(sheet);
+          extractedText = JSON.stringify(jsonData);
+        }
+      } else if (mimeType === "application/pdf" || mimeType.startsWith("image/")) {
+        isMultimodal = true;
+        inlineData = {
+          data: file.buffer.toString("base64"),
+          mimeType: mimeType,
+        };
+      } else {
+        extractedText = file.buffer.toString("utf-8");
       }
-      
-      const openai = new OpenAI({ apiKey: openAiKey });
-      
-      let openAiMessages: any[] = [
-        { role: "system", content: "You are a document extraction assistant. Return ONLY valid JSON." }
-      ];
-      
+
+      const defaultPrompt = prompt || "Витягни всю ключову інформацію з цього документа та структуруй її у JSON об'єкт.";
+      const contents: any = { parts: [] };
+
       if (isMultimodal && inlineData) {
-        if (inlineData.mimeType === "application/pdf") {
-          const pdfData = await pdfParse(file.buffer);
-          openAiMessages.push({
-            role: "user",
-            content: `Вміст документа:\n${pdfData.text}\n\n${defaultPrompt}`
-          });
+        contents.parts.push({ inlineData });
+      } else {
+        contents.parts.push({ text: `Вміст документа:\n${extractedText}\n\n` });
+      }
+      contents.parts.push({ text: defaultPrompt });
+
+      let extractedDataStr = "{}";
+      try {
+        const response = await ai.models.generateContent({
+          model: "gemini-3.1-pro-preview",
+          contents: contents,
+          config: { responseMimeType: "application/json" }
+        });
+        extractedDataStr = response.text || "{}";
+      } catch (geminiError: any) {
+        console.error("Gemini API failed, falling back to OpenAI:", geminiError?.message || geminiError);
+        
+        const openAiKey = process.env.OPENAI_API_KEY;
+        if (!openAiKey) {
+          throw new Error(`Gemini API failed (${geminiError?.message || 'Unknown error'}) and OPENAI_API_KEY is not configured.`);
+        }
+        
+        const openai = new OpenAI({ apiKey: openAiKey });
+        
+        let openAiMessages: any[] = [
+          { role: "system", content: "You are a document extraction assistant. Return ONLY valid JSON." }
+        ];
+        
+        if (isMultimodal && inlineData) {
+          if (inlineData.mimeType === "application/pdf") {
+            const pdfData = await pdfParse(file.buffer);
+            openAiMessages.push({
+              role: "user",
+              content: `Вміст документа:\n${pdfData.text}\n\n${defaultPrompt}`
+            });
+          } else {
+            openAiMessages.push({
+              role: "user",
+              content: [
+                { type: "text", text: defaultPrompt },
+                { type: "image_url", image_url: { url: `data:${inlineData.mimeType};base64,${inlineData.data}` } }
+              ]
+            });
+          }
         } else {
           openAiMessages.push({
             role: "user",
-            content: [
-              { type: "text", text: defaultPrompt },
-              { type: "image_url", image_url: { url: `data:${inlineData.mimeType};base64,${inlineData.data}` } }
-            ]
+            content: `Вміст документа:\n${extractedText}\n\n${defaultPrompt}`
           });
         }
-      } else {
-        openAiMessages.push({
-          role: "user",
-          content: `Вміст документа:\n${extractedText}\n\n${defaultPrompt}`
+        
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: openAiMessages,
+          response_format: { type: "json_object" }
         });
+        
+        extractedDataStr = completion.choices[0].message.content || "{}";
       }
-      
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: openAiMessages,
-        response_format: { type: "json_object" }
-      });
-      
-      extractedDataStr = completion.choices[0].message.content || "{}";
-    }
 
-    let extractedData = {};
-    try {
-      extractedData = JSON.parse(extractedDataStr);
-    } catch (e) {
-      console.error("Failed to parse Gemini response as JSON", e);
+      try {
+        extractedData = JSON.parse(extractedDataStr);
+      } catch (e) {
+        console.error("Failed to parse Gemini response as JSON", e);
+        throw new Error("Failed to parse AI response as JSON");
+      }
+    } catch (processError: any) {
+      console.error("Document processing error:", processError);
+      parseStatus = 'failed';
+      errorMessage = processError.message || String(processError);
+      extractedData = { error: errorMessage, status: 'failed' };
     }
 
     if (isSupabaseConfigured) {
-      const { data: insertedDoc, error: insertError } = await supabase.from("documents").insert([{
+      const insertData = {
         filename: file.originalname,
         original_name: file.originalname,
         mime_type: mimeType,
         extracted_data: extractedData,
-        type_slug: slug || 'custom'
-      }]).select().single();
+        type_slug: slug || 'custom',
+        status: parseStatus,
+        error_message: errorMessage
+      };
+
+      let { data: insertedDoc, error: insertError } = await supabase.from("documents").insert([insertData]).select().single();
+
+      // Fallback if status/error_message columns don't exist yet
+      if (insertError && insertError.code === '42703') {
+        const fallbackData = {
+          filename: file.originalname,
+          original_name: file.originalname,
+          mime_type: mimeType,
+          extracted_data: { ...extractedData, _status: parseStatus, _error: errorMessage },
+          type_slug: slug || 'custom'
+        };
+        const fallbackResult = await supabase.from("documents").insert([fallbackData]).select().single();
+        insertedDoc = fallbackResult.data;
+        insertError = fallbackResult.error;
+      }
 
       if (insertError) throw insertError;
+
+      if (parseStatus === 'failed') {
+        return res.status(500).json({ error: errorMessage, id: insertedDoc.id });
+      }
 
       res.json({
         id: insertedDoc.id,
@@ -257,6 +294,9 @@ app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (r
         extractedData: insertedDoc.extracted_data
       });
     } else {
+      if (parseStatus === 'failed') {
+        return res.status(500).json({ error: errorMessage, id: Date.now() });
+      }
       res.json({
         id: Date.now(),
         originalName: file.originalname,

@@ -29,7 +29,7 @@ type QueueItem = {
 };
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'parse' | 'types' | 'history'>('parse');
+  const [activeTab, setActiveTab] = useState<'parse' | 'types' | 'history' | 'api'>('parse');
   
   // Parse State
   const [queue, setQueue] = useState<QueueItem[]>([]);
@@ -49,6 +49,7 @@ export default function App() {
   const [newTypePrompt, setNewTypePrompt] = useState('');
   const [isCreatingType, setIsCreatingType] = useState(false);
   const [editingTypeId, setEditingTypeId] = useState<number | null>(null);
+  const [isQueueActive, setIsQueueActive] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -112,7 +113,10 @@ export default function App() {
   useEffect(() => {
     const processQueue = async () => {
       const nextItem = queue.find(item => item.status === 'pending');
-      if (!nextItem || isParsing) return;
+      if (!nextItem || isParsing || !isQueueActive) {
+        if (!nextItem && isQueueActive) setIsQueueActive(false);
+        return;
+      }
 
       setIsParsing(true);
       
@@ -138,8 +142,8 @@ export default function App() {
           const jsonData = xlsx.utils.sheet_to_json(sheet);
           const jsonString = JSON.stringify(jsonData);
           
-          // Create a new File object with the JSON content
-          fileToSend = new File([jsonString], fileToSend.name + '.json', { type: 'application/json' });
+          // Create a new File object with the JSON content (using window.File to avoid conflict with lucide-react File icon)
+          fileToSend = new window.File([jsonString], fileToSend.name + '.json', { type: 'application/json' });
         } catch (e) {
           console.error("Failed to parse Excel on client", e);
         }
@@ -197,7 +201,7 @@ export default function App() {
     };
 
     processQueue();
-  }, [queue, isParsing, selectedTypeSlug, customPrompt]);
+  }, [queue, isParsing, selectedTypeSlug, customPrompt, isQueueActive]);
 
   const clearQueue = () => {
     setQueue([]);
@@ -355,6 +359,16 @@ export default function App() {
             <History className="w-5 h-5" />
             Історія
           </button>
+          <button
+            onClick={() => setActiveTab('api')}
+            className={cn(
+              "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+              activeTab === 'api' ? "bg-indigo-50 text-indigo-700" : "text-gray-700 hover:bg-gray-100"
+            )}
+          >
+            <TerminalSquare className="w-5 h-5" />
+            API Документація
+          </button>
         </nav>
       </aside>
 
@@ -450,6 +464,28 @@ export default function App() {
                       className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
                       placeholder="Опишіть, які дані потрібно витягнути..."
                     />
+                  </div>
+                )}
+
+                {queue.some(item => item.status === 'pending') && (
+                  <div className="mt-6 flex justify-end">
+                    <button
+                      onClick={() => setIsQueueActive(true)}
+                      disabled={isQueueActive || isParsing}
+                      className="px-6 py-2.5 bg-indigo-600 text-white font-medium text-sm rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                    >
+                      {isQueueActive ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Обробка...
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-4 h-4" />
+                          Почати обробку
+                        </>
+                      )}
+                    </button>
                   </div>
                 )}
 
@@ -643,6 +679,79 @@ export default function App() {
                       Виберіть документ для перегляду даних
                     </div>
                   )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* API TAB */}
+          {activeTab === 'api' && (
+            <div className="space-y-6 max-w-4xl">
+              <div>
+                <h2 className="text-2xl font-semibold mb-1">API Документація</h2>
+                <p className="text-gray-500 text-sm">Інструкція для інтеграції сторонніх сервісів з вашим додатком.</p>
+              </div>
+
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-6">
+                <div>
+                  <h3 className="text-lg font-medium mb-2">Базовий URL</h3>
+                  <code className="block bg-gray-50 p-3 rounded-md border border-gray-100 text-sm font-mono text-gray-800">
+                    https://doc-ai-gamma.vercel.app
+                  </code>
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-medium mb-2">Ендпоінт для парсингу</h3>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-bold font-mono">POST</span>
+                    <code className="text-sm font-mono text-gray-800">/api/parse/:slug</code>
+                  </div>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Відправте файл через <code>multipart/form-data</code> на цей ендпоінт. 
+                    Замість <code>:slug</code> підставте ідентифікатор вашого шаблону (наприклад, <code>invoice</code>).
+                  </p>
+
+                  <h4 className="font-medium text-sm text-gray-700 mb-2">Приклад запиту (cURL):</h4>
+                  <pre className="bg-gray-900 text-gray-100 p-4 rounded-md text-sm font-mono overflow-x-auto">
+{`curl -X POST https://doc-ai-gamma.vercel.app/api/parse/invoice \\
+  -H "Accept: application/json" \\
+  -F "document=@/path/to/your/file.pdf"`}
+                  </pre>
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-medium mb-2">Парсинг без шаблону (Custom Prompt)</h3>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-bold font-mono">POST</span>
+                    <code className="text-sm font-mono text-gray-800">/api/parse</code>
+                  </div>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Якщо ви не хочете використовувати заздалегідь створений шаблон, ви можете передати власний промпт безпосередньо в запиті.
+                  </p>
+
+                  <h4 className="font-medium text-sm text-gray-700 mb-2">Приклад запиту (cURL):</h4>
+                  <pre className="bg-gray-900 text-gray-100 p-4 rounded-md text-sm font-mono overflow-x-auto">
+{`curl -X POST https://doc-ai-gamma.vercel.app/api/parse \\
+  -H "Accept: application/json" \\
+  -F "document=@/path/to/your/file.pdf" \\
+  -F "prompt=Витягни ім'я та суму у форматі JSON"`}
+                  </pre>
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-medium mb-2">Формат відповіді</h3>
+                  <p className="text-sm text-gray-600 mb-2">У разі успіху ви отримаєте JSON об'єкт з витягнутими даними та ID запису в базі:</p>
+                  <pre className="bg-gray-900 text-gray-100 p-4 rounded-md text-sm font-mono overflow-x-auto">
+{`{
+  "id": 123,
+  "originalName": "file.pdf",
+  "typeSlug": "invoice",
+  "extractedData": {
+    "amount": 1000,
+    "name": "John Doe"
+  }
+}`}
+                  </pre>
                 </div>
               </div>
             </div>
