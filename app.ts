@@ -148,6 +148,9 @@ app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (r
     let extractedData = {};
     let parseStatus = 'success';
     let errorMessage = '';
+    let aiModelUsed = '';
+    let promptTokens = 0;
+    let completionTokens = 0;
 
     try {
       let extractedText = "";
@@ -195,6 +198,9 @@ app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (r
           config: { responseMimeType: "application/json" }
         });
         extractedDataStr = response.text || "{}";
+        aiModelUsed = "gemini-3.1-pro-preview";
+        promptTokens = response.usageMetadata?.promptTokenCount || 0;
+        completionTokens = response.usageMetadata?.candidatesTokenCount || 0;
       } catch (geminiError: any) {
         console.error("Gemini API failed, falling back to OpenAI:", geminiError?.message || geminiError);
         
@@ -239,6 +245,9 @@ app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (r
         });
         
         extractedDataStr = completion.choices[0].message.content || "{}";
+        aiModelUsed = "gpt-4o-mini (fallback)";
+        promptTokens = completion.usage?.prompt_tokens || 0;
+        completionTokens = completion.usage?.completion_tokens || 0;
       }
 
       try {
@@ -262,7 +271,10 @@ app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (r
         extracted_data: extractedData,
         type_slug: slug || 'custom',
         status: parseStatus,
-        error_message: errorMessage
+        error_message: errorMessage,
+        ai_model: aiModelUsed,
+        prompt_tokens: promptTokens,
+        completion_tokens: completionTokens
       };
 
       let { data: insertedDoc, error: insertError } = await supabase.from("documents").insert([insertData]).select().single();
@@ -273,7 +285,14 @@ app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (r
           filename: file.originalname,
           original_name: file.originalname,
           mime_type: mimeType,
-          extracted_data: { ...extractedData, _status: parseStatus, _error: errorMessage },
+          extracted_data: { 
+            ...extractedData, 
+            _status: parseStatus, 
+            _error: errorMessage,
+            _ai_model: aiModelUsed,
+            _prompt_tokens: promptTokens,
+            _completion_tokens: completionTokens
+          },
           type_slug: slug || 'custom'
         };
         const fallbackResult = await supabase.from("documents").insert([fallbackData]).select().single();
