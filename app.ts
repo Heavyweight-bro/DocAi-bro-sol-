@@ -7,9 +7,8 @@ import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
 import mammoth from "mammoth";
 import * as xlsx from "xlsx";
-import { createRequire } from "module";
-const require = createRequire(import.meta.url);
-const pdfParse = require("pdf-parse");
+// @ts-ignore
+import pdfParse from "pdf-parse/lib/pdf-parse.js";
 
 // Initialize Supabase
 const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
