@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Upload, FileText, FileSpreadsheet, Image as ImageIcon, File, Loader2, CheckCircle2, AlertCircle, Database, Code, LayoutTemplate, History, Plus, Trash2, TerminalSquare } from 'lucide-react';
 import { cn } from './lib/utils';
+import * as xlsx from 'xlsx';
 
 type DocumentRecord = {
   id: number;
@@ -119,8 +120,30 @@ export default function App() {
         item.id === nextItem.id ? { ...item, status: 'processing' } : item
       ));
 
+      let fileToSend = nextItem.file;
+      
+      // Parse Excel files on the client side to bypass Vercel's 4.5MB payload limit
+      if (fileToSend.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || 
+          fileToSend.type === "application/vnd.ms-excel" || 
+          fileToSend.name.endsWith('.xlsx') || 
+          fileToSend.name.endsWith('.xls') ||
+          fileToSend.name.endsWith('.csv')) {
+        try {
+          const arrayBuffer = await fileToSend.arrayBuffer();
+          const workbook = xlsx.read(arrayBuffer, { type: "array" });
+          const sheetName = workbook.SheetNames[0];
+          const sheet = workbook.Sheets[sheetName];
+          const csv = xlsx.utils.sheet_to_csv(sheet);
+          
+          // Create a new File object with the CSV content
+          fileToSend = new File([csv], fileToSend.name + '.csv', { type: 'text/csv' });
+        } catch (e) {
+          console.error("Failed to parse Excel on client", e);
+        }
+      }
+
       const formData = new FormData();
-      formData.append('document', nextItem.file);
+      formData.append('document', fileToSend);
       formData.append('slug', selectedTypeSlug);
       if (selectedTypeSlug === 'custom') {
         formData.append('prompt', customPrompt);
