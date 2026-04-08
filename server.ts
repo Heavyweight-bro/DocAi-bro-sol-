@@ -10,9 +10,17 @@ import mammoth from "mammoth";
 import * as xlsx from "xlsx";
 
 // Initialize Supabase
-const supabaseUrl = process.env.SUPABASE_URL || "https://placeholder.supabase.co";
-const supabaseKey = process.env.SUPABASE_KEY || "placeholder";
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_KEY;
+
+if (!supabaseUrl || !supabaseKey || supabaseUrl.includes("placeholder")) {
+  console.warn("Supabase URL or Key is missing or using placeholders. API calls will fail.");
+}
+
+const supabase = createClient(
+  supabaseUrl || "https://placeholder.supabase.co", 
+  supabaseKey || "placeholder"
+);
 
 // Use memory storage for Vercel Serverless compatibility
 const upload = multer({ storage: multer.memoryStorage() });
@@ -25,8 +33,19 @@ app.use(express.json());
 
 // --- API Routes ---
 
+app.get("/api/health", (req, res) => {
+  res.json({ 
+    status: "ok", 
+    supabaseConfigured: !!supabaseUrl && !supabaseUrl.includes("placeholder"),
+    env: process.env.NODE_ENV
+  });
+});
+
 app.get("/api/types", async (req, res, next) => {
   try {
+    if (!supabaseUrl || supabaseUrl.includes("placeholder")) {
+      throw new Error("Supabase is not configured. Please add SUPABASE_URL and SUPABASE_KEY to environment variables.");
+    }
     const { data, error } = await supabase.from("document_types").select("*").order("created_at", { ascending: false });
     if (error) throw error;
     res.json(data.map(t => ({ ...t, createdAt: t.created_at })));
@@ -195,7 +214,11 @@ app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (r
 
 app.use('/api', (err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('API Error:', err);
-  res.status(500).json({ error: err.message || 'Внутрішня помилка сервера' });
+  const status = err.status || 500;
+  res.status(status).json({ 
+    error: err.message || 'Внутрішня помилка сервера',
+    details: process.env.NODE_ENV === 'development' ? err.stack : undefined
+  });
 });
 
 async function startServer() {
