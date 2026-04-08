@@ -1,6 +1,4 @@
-import "dotenv/config";
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import multer from "multer";
 import cors from "cors";
 import path from "path";
@@ -10,12 +8,10 @@ import mammoth from "mammoth";
 import * as xlsx from "xlsx";
 
 // Initialize Supabase
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_KEY;
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
-if (!supabaseUrl || !supabaseKey || supabaseUrl.includes("placeholder")) {
-  console.warn("Supabase URL or Key is missing or using placeholders. API calls will fail.");
-}
+const isSupabaseConfigured = supabaseUrl && !supabaseUrl.includes("placeholder");
 
 const supabase = createClient(
   supabaseUrl || "https://placeholder.supabase.co", 
@@ -26,8 +22,8 @@ const supabase = createClient(
 const upload = multer({ storage: multer.memoryStorage() });
 
 const app = express();
-const PORT = 3000;
 
+// --- Middleware ---
 app.use(cors());
 app.use(express.json());
 
@@ -36,14 +32,15 @@ app.use(express.json());
 app.get("/api/health", (req, res) => {
   res.json({ 
     status: "ok", 
-    supabaseConfigured: !!supabaseUrl && !supabaseUrl.includes("placeholder"),
-    env: process.env.NODE_ENV
+    supabaseConfigured: !!isSupabaseConfigured,
+    env: process.env.NODE_ENV,
+    isVercel: !!process.env.VERCEL
   });
 });
 
 app.get("/api/types", async (req, res, next) => {
   try {
-    if (!supabaseUrl || supabaseUrl.includes("placeholder")) {
+    if (!isSupabaseConfigured) {
       throw new Error("Supabase is not configured. Please add SUPABASE_URL and SUPABASE_KEY to environment variables.");
     }
     const { data, error } = await supabase.from("document_types").select("*").order("created_at", { ascending: false });
@@ -56,6 +53,7 @@ app.get("/api/types", async (req, res, next) => {
 
 app.post("/api/types", async (req, res, next) => {
   try {
+    if (!isSupabaseConfigured) throw new Error("Supabase not configured");
     const { name, slug, prompt } = req.body;
     if (!name || !slug || !prompt) return res.status(400).json({ error: "Всі поля обов'язкові" });
     const safeSlug = slug.toLowerCase().replace(/[^a-z0-9-]/g, '-');
@@ -73,6 +71,7 @@ app.post("/api/types", async (req, res, next) => {
 
 app.put("/api/types/:id", async (req, res, next) => {
   try {
+    if (!isSupabaseConfigured) throw new Error("Supabase not configured");
     const { name, slug, prompt } = req.body;
     if (!name || !slug || !prompt) return res.status(400).json({ error: "Всі поля обов'язкові" });
     const safeSlug = slug.toLowerCase().replace(/[^a-z0-9-]/g, '-');
@@ -91,6 +90,7 @@ app.put("/api/types/:id", async (req, res, next) => {
 
 app.delete("/api/types/:id", async (req, res, next) => {
   try {
+    if (!isSupabaseConfigured) throw new Error("Supabase not configured");
     const { error } = await supabase.from("document_types").delete().eq("id", req.params.id);
     if (error) throw error;
     res.json({ success: true });
@@ -101,6 +101,7 @@ app.delete("/api/types/:id", async (req, res, next) => {
 
 app.get("/api/documents", async (req, res, next) => {
   try {
+    if (!isSupabaseConfigured) throw new Error("Supabase not configured");
     const { data, error } = await supabase.from("documents").select("*").order("created_at", { ascending: false });
     if (error) throw error;
     res.json(data.map(d => ({
@@ -120,20 +121,19 @@ app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (r
   try {
     const apiKey = process.env.GEMINI_API_KEY1 || process.env.GEMINI_API_KEY;
     if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
-      return res.status(500).json({ error: "GEMINI_API_KEY1 не налаштовано." });
+      return res.status(500).json({ error: "GEMINI_API_KEY не налаштовано." });
     }
     const ai = new GoogleGenAI({ apiKey });
 
     if (!req.file) return res.status(400).json({ error: "Файл не надано" });
 
     const file = req.file;
-    // Виправлення проблеми з кодуванням кириличних назв файлів у Multer
     file.originalname = Buffer.from(file.originalname, 'latin1').toString('utf8');
     
     const slug = req.params.slug || req.body.slug;
     let prompt = req.body.prompt;
 
-    if (slug && slug !== 'custom') {
+    if (slug && slug !== 'custom' && isSupabaseConfigured) {
       const { data: docType } = await supabase.from("document_types").select("prompt").eq("slug", slug).single();
       if (docType) {
         prompt = docType.prompt;
@@ -189,22 +189,31 @@ app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (r
       console.error("Failed to parse Gemini response as JSON", e);
     }
 
-    const { data: insertedDoc, error: insertError } = await supabase.from("documents").insert([{
-      filename: file.originalname,
-      original_name: file.originalname,
-      mime_type: mimeType,
-      extracted_data: extractedData,
-      type_slug: slug || 'custom'
-    }]).select().single();
+    if (isSupabaseConfigured) {
+      const { data: insertedDoc, error: insertError } = await supabase.from("documents").insert([{
+        filename: file.originalname,
+        original_name: file.originalname,
+        mime_type: mimeType,
+        extracted_data: extractedData,
+        type_slug: slug || 'custom'
+      }]).select().single();
 
-    if (insertError) throw insertError;
+      if (insertError) throw insertError;
 
-    res.json({
-      id: insertedDoc.id,
-      originalName: insertedDoc.original_name,
-      typeSlug: insertedDoc.type_slug,
-      extractedData: insertedDoc.extracted_data
-    });
+      res.json({
+        id: insertedDoc.id,
+        originalName: insertedDoc.original_name,
+        typeSlug: insertedDoc.type_slug,
+        extractedData: insertedDoc.extracted_data
+      });
+    } else {
+      res.json({
+        id: Date.now(),
+        originalName: file.originalname,
+        typeSlug: slug || 'custom',
+        extractedData
+      });
+    }
 
   } catch (error: any) {
     console.error("Parsing error:", error);
@@ -212,38 +221,49 @@ app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (r
   }
 });
 
+// --- Static Files & Vite ---
+
+const setupStaticAndVite = async () => {
+  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+    try {
+      const { createServer: createViteServer } = await import("vite");
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } catch (e) {
+      console.error("Vite setup failed:", e);
+    }
+  } else {
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    app.get("*", (req, res, next) => {
+      if (req.path.startsWith('/api')) return next();
+      res.sendFile(path.join(distPath, "index.html"), (err) => {
+        if (err) res.status(404).send("Frontend missing");
+      });
+    });
+  }
+};
+
+setupStaticAndVite();
+
+// --- Error Handling ---
 app.use('/api', (err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('API Error:', err);
-  const status = err.status || 500;
-  res.status(status).json({ 
+  res.status(err.status || 500).json({ 
     error: err.message || 'Внутрішня помилка сервера',
     details: process.env.NODE_ENV === 'development' ? err.stack : undefined
   });
 });
 
-async function startServer() {
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
-  }
-
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
-}
-
-// Only start the server if we're not in a Vercel serverless environment
+// --- Start ---
 if (!process.env.VERCEL) {
-  startServer();
+  const port = Number(process.env.PORT) || 3000;
+  app.listen(port, "0.0.0.0", () => {
+    console.log(`Server running on http://localhost:${port}`);
+  });
 }
 
 export default app;
