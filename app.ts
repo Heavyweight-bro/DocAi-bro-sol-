@@ -4,6 +4,7 @@ import cors from "cors";
 import path from "path";
 import { createClient } from "@supabase/supabase-js";
 import { GoogleGenAI } from "@google/genai";
+import OpenAI from "openai";
 import mammoth from "mammoth";
 import * as xlsx from "xlsx";
 
@@ -175,13 +176,52 @@ app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (r
     }
     contents.parts.push({ text: defaultPrompt });
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
-      contents: contents,
-      config: { responseMimeType: "application/json" }
-    });
+    let extractedDataStr = "{}";
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3.1-pro-preview",
+        contents: contents,
+        config: { responseMimeType: "application/json" }
+      });
+      extractedDataStr = response.text || "{}";
+    } catch (geminiError) {
+      console.error("Gemini API failed, falling back to OpenAI:", geminiError);
+      
+      const openAiKey = process.env.OPENAI_API_KEY;
+      if (!openAiKey) {
+        throw new Error("Gemini API failed and OPENAI_API_KEY is not configured.");
+      }
+      
+      const openai = new OpenAI({ apiKey: openAiKey });
+      
+      let openAiMessages: any[] = [
+        { role: "system", content: "You are a document extraction assistant. Return ONLY valid JSON." }
+      ];
+      
+      if (isMultimodal && inlineData) {
+        openAiMessages.push({
+          role: "user",
+          content: [
+            { type: "text", text: defaultPrompt },
+            { type: "image_url", image_url: { url: `data:${inlineData.mimeType};base64,${inlineData.data}` } }
+          ]
+        });
+      } else {
+        openAiMessages.push({
+          role: "user",
+          content: `Вміст документа:\n${extractedText}\n\n${defaultPrompt}`
+        });
+      }
+      
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: openAiMessages,
+        response_format: { type: "json_object" }
+      });
+      
+      extractedDataStr = completion.choices[0].message.content || "{}";
+    }
 
-    const extractedDataStr = response.text || "{}";
     let extractedData = {};
     try {
       extractedData = JSON.parse(extractedDataStr);

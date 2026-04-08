@@ -19,11 +19,19 @@ type DocumentType = {
   prompt: string;
 };
 
+type QueueItem = {
+  id: string;
+  file: File;
+  status: 'pending' | 'processing' | 'done' | 'error';
+  error?: string;
+  result?: DocumentRecord;
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<'parse' | 'types' | 'history'>('parse');
   
   // Parse State
-  const [file, setFile] = useState<File | null>(null);
+  const [queue, setQueue] = useState<QueueItem[]>([]);
   const [selectedTypeSlug, setSelectedTypeSlug] = useState<string>('custom');
   const [customPrompt, setCustomPrompt] = useState<string>('Витягни всю ключову інформацію з цього документа та структуруй її у JSON об\'єкт.');
   const [isParsing, setIsParsing] = useState(false);
@@ -77,83 +85,98 @@ export default function App() {
     }
   };
 
+  const addFilesToQueue = (files: FileList | File[]) => {
+    const newItems: QueueItem[] = Array.from(files).map(file => ({
+      id: Math.random().toString(36).substring(7),
+      file,
+      status: 'pending'
+    }));
+    setQueue(prev => [...prev, ...newItems]);
+    setError(null);
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
-      setError(null);
+    if (e.target.files && e.target.files.length > 0) {
+      addFilesToQueue(e.target.files);
     }
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      setFile(e.dataTransfer.files[0]);
-      setError(null);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      addFilesToQueue(e.dataTransfer.files);
     }
   };
 
-  const handleParse = async () => {
-    if (!file) {
-      setError('Будь ласка, спочатку виберіть файл.');
-      return;
-    }
+  useEffect(() => {
+    const processQueue = async () => {
+      const nextItem = queue.find(item => item.status === 'pending');
+      if (!nextItem || isParsing) return;
 
-    setIsParsing(true);
-    setError(null);
+      setIsParsing(true);
+      
+      setQueue(prev => prev.map(item => 
+        item.id === nextItem.id ? { ...item, status: 'processing' } : item
+      ));
 
-    const formData = new FormData();
-    formData.append('document', file);
-    formData.append('slug', selectedTypeSlug);
-    if (selectedTypeSlug === 'custom') {
-      formData.append('prompt', customPrompt);
-    }
+      const formData = new FormData();
+      formData.append('document', nextItem.file);
+      formData.append('slug', selectedTypeSlug);
+      if (selectedTypeSlug === 'custom') {
+        formData.append('prompt', customPrompt);
+      }
 
-    try {
-      const res = await fetch('https://doc-ai-gamma.vercel.app/api/parse', {
-        method: 'POST',
-        body: formData,
-      });
+      try {
+        const res = await fetch('https://doc-ai-gamma.vercel.app/api/parse', {
+          method: 'POST',
+          body: formData,
+        });
 
-      if (!res.ok) {
-        let errorMessage = 'Не вдалося обробити документ';
-        const contentType = res.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-          const errData = await res.json();
-          errorMessage = errData.error || errorMessage;
-        } else {
-          errorMessage = `Помилка сервера: ${res.status} ${res.statusText}`;
+        if (!res.ok) {
+          let errorMessage = 'Не вдалося обробити документ';
+          const contentType = res.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errData = await res.json();
+            errorMessage = errData.error || errorMessage;
+          } else {
+            errorMessage = `Помилка сервера: ${res.status} ${res.statusText}`;
+          }
+          throw new Error(errorMessage);
         }
-        throw new Error(errorMessage);
-      }
 
-      const contentType = res.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        throw new Error('Сервер повернув невірний формат даних');
-      }
+        const data = await res.json();
+        
+        const newDoc = {
+          id: data.id,
+          filename: '', 
+          originalName: data.originalName,
+          mimeType: nextItem.file.type,
+          extractedData: data.extractedData,
+          typeSlug: data.typeSlug,
+          createdAt: new Date().toISOString(),
+        };
 
-      const data = await res.json();
-      setFile(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+        setQueue(prev => prev.map(item => 
+          item.id === nextItem.id ? { ...item, status: 'done', result: newDoc } : item
+        ));
+        
+        await fetchDocuments();
+      } catch (err: any) {
+        setQueue(prev => prev.map(item => 
+          item.id === nextItem.id ? { ...item, status: 'error', error: err.message } : item
+        ));
+      } finally {
+        setIsParsing(false);
       }
-      await fetchDocuments();
-      
-      const newDoc = {
-        id: data.id,
-        filename: '', 
-        originalName: data.originalName,
-        mimeType: file.type,
-        extractedData: data.extractedData,
-        typeSlug: data.typeSlug,
-        createdAt: new Date().toISOString(),
-      };
-      setSelectedDoc(newDoc);
-      setActiveTab('history');
-      
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setIsParsing(false);
+    };
+
+    processQueue();
+  }, [queue, isParsing, selectedTypeSlug, customPrompt]);
+
+  const clearQueue = () => {
+    setQueue([]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -325,7 +348,7 @@ export default function App() {
                 <div 
                   className={cn(
                     "border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer",
-                    file ? "border-indigo-500 bg-indigo-50" : "border-gray-300 hover:border-indigo-400 hover:bg-gray-50"
+                    queue.length > 0 ? "border-indigo-500 bg-indigo-50" : "border-gray-300 hover:border-indigo-400 hover:bg-gray-50"
                   )}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={handleDrop}
@@ -337,22 +360,41 @@ export default function App() {
                     className="hidden" 
                     onChange={handleFileChange}
                     accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                    multiple
                   />
                   
-                  {file ? (
-                    <div className="flex flex-col items-center gap-2">
-                      {getFileIcon(file.type)}
-                      <span className="font-medium text-sm text-indigo-900 truncate max-w-full px-4">{file.name}</span>
-                      <span className="text-xs text-indigo-600">{(file.size / 1024 / 1024).toFixed(2)} MB</span>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center gap-2 text-gray-500">
-                      <Upload className="w-8 h-8 text-gray-400 mb-2" />
-                      <p className="text-sm font-medium text-gray-900">Натисніть або перетягніть файл сюди</p>
-                      <p className="text-xs">PDF, Word, Excel, або Зображення (Скани)</p>
-                    </div>
-                  )}
+                  <div className="flex flex-col items-center gap-2 text-gray-500">
+                    <Upload className="w-8 h-8 text-gray-400 mb-2" />
+                    <p className="text-sm font-medium text-gray-900">Натисніть або перетягніть файли сюди</p>
+                    <p className="text-xs">PDF, Word, Excel, або Зображення (Скани). Можна вибрати декілька.</p>
+                  </div>
                 </div>
+
+                {queue.length > 0 && (
+                  <div className="mt-6 space-y-3">
+                    <div className="flex justify-between items-center mb-2">
+                      <h3 className="text-sm font-medium text-gray-700">Черга обробки ({queue.length})</h3>
+                      <button onClick={clearQueue} className="text-xs text-red-600 hover:text-red-800">Очистити</button>
+                    </div>
+                    {queue.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-md border border-gray-100">
+                        <div className="flex items-center gap-3 overflow-hidden">
+                          {getFileIcon(item.file.type)}
+                          <div className="truncate">
+                            <p className="text-sm font-medium text-gray-900 truncate">{item.file.name}</p>
+                            <p className="text-xs text-gray-500">{(item.file.size / 1024 / 1024).toFixed(2)} MB</p>
+                          </div>
+                        </div>
+                        <div className="flex-shrink-0 ml-4">
+                          {item.status === 'pending' && <span className="text-xs font-medium text-gray-500 bg-gray-200 px-2 py-1 rounded-full">В черзі</span>}
+                          {item.status === 'processing' && <span className="flex items-center gap-1 text-xs font-medium text-indigo-600 bg-indigo-100 px-2 py-1 rounded-full"><Loader2 className="w-3 h-3 animate-spin"/> Обробка</span>}
+                          {item.status === 'done' && <span className="flex items-center gap-1 text-xs font-medium text-green-600 bg-green-100 px-2 py-1 rounded-full"><CheckCircle2 className="w-3 h-3"/> Готово</span>}
+                          {item.status === 'error' && <span className="flex items-center gap-1 text-xs font-medium text-red-600 bg-red-100 px-2 py-1 rounded-full" title={item.error}><AlertCircle className="w-3 h-3"/> Помилка</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 <div className="mt-6">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -391,24 +433,6 @@ export default function App() {
                     <p>{error}</p>
                   </div>
                 )}
-
-                <button
-                  onClick={handleParse}
-                  disabled={!file || isParsing}
-                  className="w-full mt-6 bg-indigo-600 text-white font-medium py-2.5 px-4 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors"
-                >
-                  {isParsing ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Обробка документа...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="w-4 h-4" />
-                      Витягнути дані
-                    </>
-                  )}
-                </button>
               </div>
             </div>
           )}
