@@ -156,7 +156,8 @@ app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (r
       const workbook = xlsx.read(file.buffer, { type: "buffer" });
       const sheetName = workbook.SheetNames[0];
       const sheet = workbook.Sheets[sheetName];
-      extractedText = xlsx.utils.sheet_to_csv(sheet);
+      const jsonData = xlsx.utils.sheet_to_json(sheet);
+      extractedText = JSON.stringify(jsonData);
     } else if (mimeType === "application/pdf" || mimeType.startsWith("image/")) {
       isMultimodal = true;
       inlineData = {

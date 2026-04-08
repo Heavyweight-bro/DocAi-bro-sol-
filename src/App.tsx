@@ -133,10 +133,13 @@ export default function App() {
           const workbook = xlsx.read(arrayBuffer, { type: "array" });
           const sheetName = workbook.SheetNames[0];
           const sheet = workbook.Sheets[sheetName];
-          const csv = xlsx.utils.sheet_to_csv(sheet);
           
-          // Create a new File object with the CSV content
-          fileToSend = new File([csv], fileToSend.name + '.csv', { type: 'text/csv' });
+          // Convert to JSON to automatically strip empty rows and columns
+          const jsonData = xlsx.utils.sheet_to_json(sheet);
+          const jsonString = JSON.stringify(jsonData);
+          
+          // Create a new File object with the JSON content
+          fileToSend = new File([jsonString], fileToSend.name + '.json', { type: 'application/json' });
         } catch (e) {
           console.error("Failed to parse Excel on client", e);
         }
