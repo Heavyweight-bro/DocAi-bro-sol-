@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, FileText, FileSpreadsheet, Image as ImageIcon, File, Loader2, CheckCircle2, AlertCircle, Database, Code, LayoutTemplate, History, Plus, Trash2, TerminalSquare } from 'lucide-react';
+import { Upload, FileText, FileSpreadsheet, Image as ImageIcon, File, Loader2, CheckCircle2, AlertCircle, Database, Code, LayoutTemplate, History, Plus, Trash2, TerminalSquare, Eye, X } from 'lucide-react';
 import { cn } from './lib/utils';
 import * as xlsx from 'xlsx';
 
@@ -50,8 +50,22 @@ export default function App() {
   const [isCreatingType, setIsCreatingType] = useState(false);
   const [editingTypeId, setEditingTypeId] = useState<number | null>(null);
   const [isQueueActive, setIsQueueActive] = useState(false);
+  
+  // Preview State
+  const [previewItem, setPreviewItem] = useState<QueueItem | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (previewItem?.file) {
+      const url = URL.createObjectURL(previewItem.file);
+      setPreviewUrl(url);
+      return () => URL.revokeObjectURL(url);
+    } else {
+      setPreviewUrl(null);
+    }
+  }, [previewItem]);
 
   useEffect(() => {
     fetchTypes();
@@ -425,7 +439,14 @@ export default function App() {
                             <p className="text-xs text-gray-500">{(item.file.size / 1024 / 1024).toFixed(2)} MB</p>
                           </div>
                         </div>
-                        <div className="flex-shrink-0 ml-4">
+                        <div className="flex-shrink-0 ml-4 flex items-center gap-2">
+                          <button 
+                            onClick={() => setPreviewItem(item)}
+                            className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
+                            title="Попередній перегляд"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
                           {item.status === 'pending' && <span className="text-xs font-medium text-gray-500 bg-gray-200 px-2 py-1 rounded-full">В черзі</span>}
                           {item.status === 'processing' && <span className="flex items-center gap-1 text-xs font-medium text-indigo-600 bg-indigo-100 px-2 py-1 rounded-full"><Loader2 className="w-3 h-3 animate-spin"/> Обробка</span>}
                           {item.status === 'done' && <span className="flex items-center gap-1 text-xs font-medium text-green-600 bg-green-100 px-2 py-1 rounded-full"><CheckCircle2 className="w-3 h-3"/> Готово</span>}
@@ -759,6 +780,83 @@ export default function App() {
 
         </div>
       </main>
+
+      {/* Preview Modal */}
+      {previewItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl h-[85vh] flex flex-col overflow-hidden border border-gray-200">
+            <div className="flex justify-between items-center px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <div className="flex items-center gap-3 overflow-hidden">
+                {getFileIcon(previewItem.file.type)}
+                <h3 className="font-semibold text-lg text-gray-900 truncate">{previewItem.file.name}</h3>
+                <div className="flex-shrink-0 ml-2">
+                  {previewItem.status === 'pending' && <span className="text-xs font-medium text-gray-500 bg-gray-200 px-2 py-1 rounded-full">В черзі</span>}
+                  {previewItem.status === 'processing' && <span className="flex items-center gap-1 text-xs font-medium text-indigo-600 bg-indigo-100 px-2 py-1 rounded-full"><Loader2 className="w-3 h-3 animate-spin"/> Обробка</span>}
+                  {previewItem.status === 'done' && <span className="flex items-center gap-1 text-xs font-medium text-green-600 bg-green-100 px-2 py-1 rounded-full"><CheckCircle2 className="w-3 h-3"/> Готово</span>}
+                  {previewItem.status === 'error' && <span className="flex items-center gap-1 text-xs font-medium text-red-600 bg-red-100 px-2 py-1 rounded-full"><AlertCircle className="w-3 h-3"/> Помилка</span>}
+                </div>
+              </div>
+              <button 
+                onClick={() => setPreviewItem(null)} 
+                className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-200 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="flex-1 flex overflow-hidden">
+              {/* Left: Original File */}
+              <div className="w-1/2 border-r border-gray-200 bg-gray-100 p-4 flex flex-col">
+                <h4 className="font-medium text-sm text-gray-500 mb-3 uppercase tracking-wider">Оригінал документу</h4>
+                <div className="flex-1 bg-white border border-gray-200 rounded-lg overflow-hidden flex items-center justify-center shadow-inner">
+                  {previewItem.file.type.startsWith('image/') && previewUrl ? (
+                    <img src={previewUrl} alt="Preview" className="max-w-full max-h-full object-contain" />
+                  ) : previewItem.file.type === 'application/pdf' && previewUrl ? (
+                    <iframe src={`${previewUrl}#toolbar=0`} className="w-full h-full border-0" title="PDF Preview" />
+                  ) : (
+                    <div className="text-gray-400 flex flex-col items-center p-8 text-center">
+                      <File className="w-16 h-16 mb-4 text-gray-300" />
+                      <p className="font-medium text-gray-600">Попередній перегляд недоступний</p>
+                      <p className="text-sm mt-2">Для цього типу файлу ({previewItem.file.type || 'невідомий'}) візуальний перегляд не підтримується браузером.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              {/* Right: Extracted Data */}
+              <div className="w-1/2 p-4 flex flex-col bg-gray-900 text-gray-100">
+                <h4 className="font-medium text-sm text-gray-400 mb-3 uppercase tracking-wider">Результат парсингу (JSON)</h4>
+                <div className="flex-1 overflow-auto bg-gray-950 rounded-lg border border-gray-800 p-4">
+                  {previewItem.status === 'pending' && (
+                    <div className="h-full flex flex-col items-center justify-center text-gray-500">
+                      <History className="w-10 h-10 mb-3 opacity-50" />
+                      <p>Очікує в черзі на обробку...</p>
+                    </div>
+                  )}
+                  {previewItem.status === 'processing' && (
+                    <div className="h-full flex flex-col items-center justify-center text-indigo-400">
+                      <Loader2 className="w-10 h-10 mb-3 animate-spin" />
+                      <p>ШІ аналізує документ...</p>
+                    </div>
+                  )}
+                  {previewItem.status === 'error' && (
+                    <div className="h-full flex flex-col items-center justify-center text-red-400 text-center p-6">
+                      <AlertCircle className="w-10 h-10 mb-3" />
+                      <p className="font-medium mb-2">Помилка обробки</p>
+                      <p className="text-sm opacity-80">{previewItem.error}</p>
+                    </div>
+                  )}
+                  {previewItem.status === 'done' && previewItem.result && (
+                    <pre className="text-sm font-mono whitespace-pre-wrap text-green-400">
+                      {JSON.stringify(previewItem.result.extractedData, null, 2)}
+                    </pre>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
