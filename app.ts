@@ -1,3 +1,5 @@
+import "./server/config";
+import { localStore, persistLocal } from "./server/local-store";
 import express from "express";
 import multer from "multer";
 import cors from "cors";
@@ -13,15 +15,16 @@ import pdfParse from "pdf-parse-new";
 const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
-const isSupabaseConfigured = supabaseUrl && !supabaseUrl.includes("placeholder");
+const isSupabaseConfigured = !!(supabaseUrl && supabaseKey && !supabaseUrl.includes("placeholder"));
+const isLocalMode = !isSupabaseConfigured && !process.env.VERCEL && process.env.NODE_ENV !== "production";
 
 const supabase = createClient(
-  supabaseUrl || "https://placeholder.supabase.co", 
+  supabaseUrl || "https://placeholder.supabase.co",
   supabaseKey || "placeholder"
 );
 
 // Use memory storage for Vercel Serverless compatibility
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 1 } });
 
 const app = express();
 
@@ -32,9 +35,12 @@ app.use(express.json());
 // --- API Routes ---
 
 app.get("/api/health", (req, res) => {
-  res.json({ 
-    status: "ok", 
+  res.json({
+    status: "ok",
     supabaseConfigured: !!isSupabaseConfigured,
+    aiConfigured: !!(process.env.GEMINI_API_KEY1 || process.env.GEMINI_API_KEY),
+    storage: isSupabaseConfigured ? "supabase" : isLocalMode ? "local" : "none",
+    maxUploadBytes: 10 * 1024 * 1024,
     env: process.env.NODE_ENV,
     isVercel: !!process.env.VERCEL
   });
@@ -42,6 +48,7 @@ app.get("/api/health", (req, res) => {
 
 app.get("/api/types", async (req, res, next) => {
   try {
+    if (isLocalMode) return res.json(localStore.types);
     if (!isSupabaseConfigured) {
       throw new Error("Supabase is not configured. Please add SUPABASE_URL and SUPABASE_KEY to environment variables.");
     }
@@ -55,11 +62,20 @@ app.get("/api/types", async (req, res, next) => {
 
 app.post("/api/types", async (req, res, next) => {
   try {
-    if (!isSupabaseConfigured) throw new Error("Supabase not configured");
     const { name, slug, prompt } = req.body;
-    if (!name || !slug || !prompt) return res.status(400).json({ error: "Всі поля обов'язкові" });
-    const safeSlug = slug.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-    
+    if (![name, slug, prompt].every(v => typeof v === "string" && v.trim())) return res.status(400).json({ error: "Всі поля обов'язкові" });
+    const safeSlug = slug.trim().toLowerCase();
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(safeSlug) || safeSlug === 'custom') return res.status(400).json({ error: 'Slug: латинські літери, цифри та дефіси; custom зарезервовано.' });
+    if (isLocalMode) {
+      const id = Date.now();
+      if (localStore.types.some(t => t.slug === safeSlug && t.id !== id)) return res.status(409).json({ error: 'Такий slug вже існує' });
+      const record = { id, name: name.trim(), slug: safeSlug, prompt: prompt.trim() };
+      localStore.types.unshift(record);
+      persistLocal();
+      return res.json(record);
+    }
+    if (!isSupabaseConfigured) throw new Error("Supabase not configured");
+
     const { data, error } = await supabase.from("document_types").insert([{ name, slug: safeSlug, prompt }]).select().single();
     if (error) {
       if (error.code === '23505') return res.status(400).json({ error: "Тип з таким ідентифікатором (slug) вже існує" });
@@ -73,11 +89,22 @@ app.post("/api/types", async (req, res, next) => {
 
 app.put("/api/types/:id", async (req, res, next) => {
   try {
-    if (!isSupabaseConfigured) throw new Error("Supabase not configured");
     const { name, slug, prompt } = req.body;
-    if (!name || !slug || !prompt) return res.status(400).json({ error: "Всі поля обов'язкові" });
-    const safeSlug = slug.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-    
+    if (![name, slug, prompt].every(v => typeof v === "string" && v.trim())) return res.status(400).json({ error: "Всі поля обов'язкові" });
+    const safeSlug = slug.trim().toLowerCase();
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(safeSlug) || safeSlug === 'custom') return res.status(400).json({ error: 'Slug: латинські літери, цифри та дефіси; custom зарезервовано.' });
+    if (isLocalMode) {
+      const id = Number(req.params.id);
+      if (localStore.types.some(t => t.slug === safeSlug && t.id !== id)) return res.status(409).json({ error: 'Такий slug вже існує' });
+      const record = { id, name: name.trim(), slug: safeSlug, prompt: prompt.trim() };
+      const index = localStore.types.findIndex(t => t.id === id);
+      if (index < 0) return res.status(404).json({ error: 'Шаблон не знайдено' });
+      localStore.types[index] = record;
+      persistLocal();
+      return res.json(record);
+    }
+    if (!isSupabaseConfigured) throw new Error("Supabase not configured");
+
     const { data, error } = await supabase.from("document_types").update({ name, slug: safeSlug, prompt }).eq("id", req.params.id).select().single();
     if (error) {
       if (error.code === '23505') return res.status(400).json({ error: "Тип з таким ідентифікатором (slug) вже існує" });
@@ -92,6 +119,11 @@ app.put("/api/types/:id", async (req, res, next) => {
 
 app.delete("/api/types/:id", async (req, res, next) => {
   try {
+    if (isLocalMode) {
+      localStore.types = localStore.types.filter(t => t.id !== Number(req.params.id));
+      persistLocal();
+      return res.json({ success: true });
+    }
     if (!isSupabaseConfigured) throw new Error("Supabase not configured");
     const { error } = await supabase.from("document_types").delete().eq("id", req.params.id);
     if (error) throw error;
@@ -103,6 +135,7 @@ app.delete("/api/types/:id", async (req, res, next) => {
 
 app.get("/api/documents", async (req, res, next) => {
   try {
+    if (isLocalMode) return res.json(localStore.documents);
     if (!isSupabaseConfigured) throw new Error("Supabase not configured");
     const { data, error } = await supabase.from("documents").select("*").order("created_at", { ascending: false });
     if (error) throw error;
@@ -121,9 +154,11 @@ app.get("/api/documents", async (req, res, next) => {
 
 app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (req, res, next) => {
   try {
+    if (!req.file) return res.status(400).json({ error: "Файл не надано" });
+    if (!/\.(pdf|docx|xlsx|xls|csv|json|txt|png|jpe?g|webp)$/i.test(req.file.originalname)) return res.status(415).json({ error: 'Формат не підтримується. Використайте PDF, DOCX, Excel, CSV, JSON, TXT або зображення.' });
     const apiKey = process.env.GEMINI_API_KEY1 || process.env.GEMINI_API_KEY;
     if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
-      return res.status(500).json({ error: "GEMINI_API_KEY не налаштовано." });
+      return res.status(503).json({ error: "Додайте GEMINI_API_KEY у .env.local та перезапустіть сервер для AI-обробки." });
     }
     const ai = new GoogleGenAI({ apiKey });
 
@@ -131,7 +166,7 @@ app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (r
 
     const file = req.file;
     file.originalname = Buffer.from(file.originalname, 'latin1').toString('utf8');
-    
+
     const slug = req.params.slug || req.body.slug;
     let prompt = req.body.prompt;
 
@@ -144,6 +179,11 @@ app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (r
       }
     }
 
+    if (slug && slug !== 'custom' && isLocalMode) {
+      const template = localStore.types.find(t => t.slug === slug);
+      if (!template) return res.status(404).json({ error: 'Шаблон не знайдено' });
+      prompt = template.prompt;
+    }
     const mimeType = file.mimetype;
     let extractedData = {};
     let parseStatus = 'success';
@@ -165,9 +205,7 @@ app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (r
           extractedText = file.buffer.toString("utf-8");
         } else {
           const workbook = xlsx.read(file.buffer, { type: "buffer" });
-          const sheetName = workbook.SheetNames[0];
-          const sheet = workbook.Sheets[sheetName];
-          const jsonData = xlsx.utils.sheet_to_json(sheet);
+          const jsonData = Object.fromEntries(workbook.SheetNames.map(name => [name, xlsx.utils.sheet_to_json(workbook.Sheets[name])]));
           extractedText = JSON.stringify(jsonData);
         }
       } else if (mimeType === "application/pdf" || mimeType.startsWith("image/")) {
@@ -203,18 +241,18 @@ app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (r
         completionTokens = response.usageMetadata?.candidatesTokenCount || 0;
       } catch (geminiError: any) {
         console.error("Gemini API failed, falling back to OpenAI:", geminiError?.message || geminiError);
-        
+
         const openAiKey = process.env.OPENAI_API_KEY;
         if (!openAiKey) {
           throw new Error(`Gemini API failed (${geminiError?.message || 'Unknown error'}) and OPENAI_API_KEY is not configured.`);
         }
-        
+
         const openai = new OpenAI({ apiKey: openAiKey });
-        
+
         let openAiMessages: any[] = [
           { role: "system", content: "You are a document extraction assistant. Return ONLY valid JSON." }
         ];
-        
+
         if (isMultimodal && inlineData) {
           if (inlineData.mimeType === "application/pdf") {
             const pdfData = await pdfParse(file.buffer);
@@ -237,13 +275,13 @@ app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (r
             content: `Вміст документа:\n${extractedText}\n\n${defaultPrompt}`
           });
         }
-        
+
         const completion = await openai.chat.completions.create({
           model: "gpt-4o-mini",
           messages: openAiMessages,
           response_format: { type: "json_object" }
         });
-        
+
         extractedDataStr = completion.choices[0].message.content || "{}";
         aiModelUsed = "gpt-4o-mini (fallback)";
         promptTokens = completion.usage?.prompt_tokens || 0;
@@ -285,9 +323,9 @@ app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (r
           filename: file.originalname,
           original_name: file.originalname,
           mime_type: mimeType,
-          extracted_data: { 
-            ...extractedData, 
-            _status: parseStatus, 
+          extracted_data: {
+            ...extractedData,
+            _status: parseStatus,
             _error: errorMessage,
             _ai_model: aiModelUsed,
             _prompt_tokens: promptTokens,
@@ -316,12 +354,9 @@ app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (r
       if (parseStatus === 'failed') {
         return res.status(500).json({ error: errorMessage, id: Date.now() });
       }
-      res.json({
-        id: Date.now(),
-        originalName: file.originalname,
-        typeSlug: slug || 'custom',
-        extractedData
-      });
+      const record = { id: Date.now(), originalName: file.originalname, mimeType, typeSlug: slug || 'custom', extractedData, createdAt: new Date().toISOString() };
+      if (isLocalMode) { localStore.documents.unshift(record); persistLocal(); }
+      res.json(record);
     }
 
   } catch (error: any) {
@@ -361,8 +396,8 @@ setupStaticAndVite();
 // --- Error Handling ---
 app.use('/api', (err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('API Error:', err);
-  res.status(err.status || 500).json({ 
-    error: err.message || 'Внутрішня помилка сервера',
+  res.status(err.code === 'LIMIT_FILE_SIZE' ? 413 : err.status || 500).json({
+    error: err.code === 'LIMIT_FILE_SIZE' ? 'Файл перевищує ліміт 10 MB' : err.message || 'Внутрішня помилка сервера',
     details: process.env.NODE_ENV === 'development' ? err.stack : undefined
   });
 });

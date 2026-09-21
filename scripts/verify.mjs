@@ -1,0 +1,52 @@
+import { spawn } from 'node:child_process';
+import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const { chromium } = require('playwright');
+const temp = await mkdtemp(path.join(tmpdir(), 'docai-test-'));
+const server = spawn(process.execPath, ['--import', 'tsx', 'app.ts'], { env: { ...process.env, PORT: '3100', LOCAL_DATA_PATH: path.join(temp, 'data.json') }, stdio: ['ignore', 'pipe', 'pipe'] });
+let browser;
+try {
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Server startup timeout')), 30000);
+    server.stdout.on('data', d => { if (d.toString().includes('Server running')) { clearTimeout(timer); resolve(); } });
+    server.on('exit', code => reject(new Error(`Server exited: ${code}`)));
+    server.stderr.on('data', d => process.stderr.write(d));
+  });
+  const base = 'http://localhost:3100';
+  const health = await (await fetch(base + '/api/health')).json();
+  assert.equal(health.storage, 'local');
+  const api = async (url, method, body) => fetch(base + url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  let result = await api('/api/types', 'POST', {name:'QA',slug:'qa-check',prompt:'Extract JSON'});
+  assert.equal(result.status,200); const record = await result.json();
+  assert.equal((await api('/api/types','POST',{name:'QA',slug:'qa-check',prompt:'x'})).status,409);
+  assert.equal((await api('/api/types','POST',{name:'QA',slug:'---',prompt:'x'})).status,400);
+  assert.equal((await api('/api/types/'+record.id,'PUT',{name:'QA updated',slug:'qa-check',prompt:'Updated'})).status,200);
+  assert.equal((await fetch(base + '/api/types/'+record.id,{method:'DELETE'})).status,200);
+  const oversized = new FormData(); oversized.append('document',new Blob([new Uint8Array(10*1024*1024+1)]),'too-big.pdf');
+  assert.equal((await fetch(base+'/api/parse',{method:'POST',body:oversized})).status,413);
+  console.log('PASS: API health, template CRUD, duplicate/invalid slugs and 10 MB upload limit.');
+  if (process.argv.includes('--api-only')) { server.kill(); await rm(temp, {recursive:true,force:true}); process.exit(0); }
+  browser = await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH || undefined,args:['--no-sandbox','--disable-dev-shm-usage','--use-gl=angle','--use-angle=swiftshader']});
+  const page = await browser.newPage({ viewport:{width:1440,height:1050} });
+  const errors=[]; page.on('pageerror',e=>errors.push(e.message));
+  await page.goto(base); await page.getByText('Від файлу — до даних.').waitFor();
+  await page.getByText('Простір готовий. Підключіть AI для розпізнавання.').waitFor();
+  await page.screenshot({path:'/tmp/docai-desktop.png',fullPage:true});
+  await page.locator('input[type=file]').setInputFiles({name:'sample.txt',mimeType:'text/plain',buffer:Buffer.from('Invoice 123')});
+  await page.getByText('sample.txt',{exact:true}).waitFor();
+  assert.equal(await page.getByRole('button',{name:'Почати обробку'}).isDisabled(),true);
+  await page.getByTitle('Попередній перегляд').click(); await page.getByRole('dialog').waitFor(); await page.keyboard.press('Escape');
+  assert.equal(await page.getByRole('dialog').count(),0);
+  await page.getByRole('button',{name:'Шаблони',exact:true}).click(); await page.getByText('Створити новий шаблон').waitFor();
+  await page.getByRole('button',{name:'Історія',exact:true}).click(); await page.getByRole('textbox',{name:'Пошук документів'}).fill('missing'); await page.getByText('Нічого не знайдено').waitFor();
+  await page.getByRole('button',{name:'Робочий простір',exact:true}).click();
+  await page.setViewportSize({width:390,height:844});
+  await page.screenshot({path:'/tmp/docai-mobile.png',fullPage:true});
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
+  assert.deepEqual(errors,[]);
+  console.log('PASS: API CRUD, validation, upload limit, UI upload, missing-key state, preview, navigation, search, mobile overflow, browser errors.');
+} finally { if(browser)await browser.close();server.kill();await rm(temp,{recursive:true,force:true}); }

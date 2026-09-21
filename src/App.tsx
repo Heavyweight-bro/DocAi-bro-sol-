@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, FileText, FileSpreadsheet, Image as ImageIcon, File, Loader2, CheckCircle2, AlertCircle, Database, Code, LayoutTemplate, History, Plus, Trash2, TerminalSquare, Eye, X } from 'lucide-react';
+import { Upload, FileText, FileSpreadsheet, Image as ImageIcon, File, Loader2, CheckCircle2, AlertCircle, Database, Code, LayoutTemplate, History, Plus, Trash2, TerminalSquare, Eye, X, Search, Download, Copy, Sparkles, ArrowUpRight, RotateCcw } from 'lucide-react';
 import { cn } from './lib/utils';
-import * as xlsx from 'xlsx';
+
+
+const API_BASE = '';
 
 type DocumentRecord = {
   id: number;
@@ -30,19 +32,19 @@ type QueueItem = {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'parse' | 'types' | 'history' | 'api'>('parse');
-  
+
   // Parse State
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [selectedTypeSlug, setSelectedTypeSlug] = useState<string>('custom');
   const [customPrompt, setCustomPrompt] = useState<string>('Витягни всю ключову інформацію з цього документа та структуруй її у JSON об\'єкт.');
   const [isParsing, setIsParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Data State
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [selectedDoc, setSelectedDoc] = useState<DocumentRecord | null>(null);
   const [documentTypes, setDocumentTypes] = useState<DocumentType[]>([]);
-  
+
   // New Type State
   const [newTypeName, setNewTypeName] = useState('');
   const [newTypeSlug, setNewTypeSlug] = useState('');
@@ -50,9 +52,34 @@ export default function App() {
   const [isCreatingType, setIsCreatingType] = useState(false);
   const [editingTypeId, setEditingTypeId] = useState<number | null>(null);
   const [isQueueActive, setIsQueueActive] = useState(false);
-  
+
   // Preview State
-  const [previewItem, setPreviewItem] = useState<QueueItem | null>(null);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const previewItem = queue.find(item => item.id === previewId) || null;
+  const setPreviewItem = (item: QueueItem | null) => setPreviewId(item?.id || null);
+  const [health, setHealth] = useState<{ aiConfigured: boolean; storage: string } | null>(null);
+  const [search, setSearch] = useState('');
+  const [notice, setNotice] = useState('');
+  const [dragging, setDragging] = useState(false);
+  const busyRef = useRef(false);
+  const filteredDocuments = documents.filter(doc => `${doc.originalName} ${doc.typeSlug}`.toLowerCase().includes(search.toLowerCase()));
+  const exportJson = (value: unknown, name: string) => {
+    const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' }));
+    const link = document.createElement('a'); link.href = url; link.download = name.replace(/\.[^.]+$/, '') + '.json'; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const copyJson = async (value: unknown) => {
+    try { await navigator.clipboard.writeText(JSON.stringify(value, null, 2)); setNotice('JSON скопійовано'); }
+    catch { setError('Не вдалося скопіювати. Скористайтеся завантаженням JSON.'); }
+  };
+  useEffect(() => {
+    fetch('/api/health').then(r => { if (!r.ok) throw new Error(); return r.json(); }).then(setHealth).catch(() => setError('Сервер недоступний. Перевірте підключення.'));
+  }, []);
+  useEffect(() => { if (notice) { const timer = setTimeout(() => setNotice(''), 3000); return () => clearTimeout(timer); } }, [notice]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setPreviewId(null); };
+    window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -65,7 +92,7 @@ export default function App() {
     } else {
       setPreviewUrl(null);
     }
-  }, [previewItem]);
+  }, [previewItem?.id]);
 
   useEffect(() => {
     fetchTypes();
@@ -74,7 +101,8 @@ export default function App() {
 
   const fetchTypes = async () => {
     try {
-      const res = await fetch('https://doc-ai-gamma.vercel.app/api/types');
+      const res = await fetch(`${API_BASE}/api/types`);
+      if (!res.ok) throw new Error((await res.json()).error || 'Не вдалося завантажити дані');
       if (res.ok) {
         const contentType = res.headers.get('content-type');
         if (contentType && contentType.includes('application/json')) {
@@ -82,13 +110,14 @@ export default function App() {
         }
       }
     } catch (err) {
-      console.error('Failed to fetch types', err);
+      setError(err instanceof Error ? err.message : 'Не вдалося завантажити шаблони');
     }
   };
 
   const fetchDocuments = async () => {
     try {
-      const res = await fetch('https://doc-ai-gamma.vercel.app/api/documents');
+      const res = await fetch(`${API_BASE}/api/documents`);
+      if (!res.ok) throw new Error((await res.json()).error || 'Не вдалося завантажити дані');
       if (res.ok) {
         const contentType = res.headers.get('content-type');
         if (contentType && contentType.includes('application/json')) {
@@ -97,28 +126,40 @@ export default function App() {
         }
       }
     } catch (err) {
-      console.error('Failed to fetch documents', err);
+      setError(err instanceof Error ? err.message : 'Не вдалося завантажити історію');
     }
   };
 
   const addFilesToQueue = (files: FileList | File[]) => {
-    const newItems: QueueItem[] = Array.from(files).map(file => ({
-      id: Math.random().toString(36).substring(7),
-      file,
-      status: 'pending'
-    }));
-    setQueue(prev => [...prev, ...newItems]);
-    setError(null);
+    const rejected: string[] = [];
+    const valid = Array.from(files).filter(file => {
+      if (!/\.(pdf|docx|xlsx|xls|csv|json|txt|png|jpe?g|webp)$/i.test(file.name) || file.size > 10 * 1024 * 1024 || file.size === 0) {
+        rejected.push(file.name); return false;
+      }
+      return true;
+    });
+    setQueue(prev => {
+      const seen = new Set(prev.map(i => `${i.file.name}:${i.file.size}:${i.file.lastModified}`));
+      const added: QueueItem[] = [];
+      for (const file of valid) {
+        const key = `${file.name}:${file.size}:${file.lastModified}`;
+        if (!seen.has(key)) { seen.add(key); added.push({ id: crypto.randomUUID(), file, status: 'pending' }); }
+      }
+      return [...prev, ...added];
+    });
+    setError(rejected.length ? `Не додано: ${rejected.join(', ')}. Перевірте формат і розмір (1 байт – 10 MB).` : null);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       addFilesToQueue(e.target.files);
+      e.target.value = "";
     }
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    setDragging(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       addFilesToQueue(e.dataTransfer.files);
     }
@@ -127,35 +168,36 @@ export default function App() {
   useEffect(() => {
     const processQueue = async () => {
       const nextItem = queue.find(item => item.status === 'pending');
-      if (!nextItem || isParsing || !isQueueActive) {
+      if (!nextItem || isParsing || busyRef.current || !isQueueActive) {
         if (!nextItem && isQueueActive) setIsQueueActive(false);
         return;
       }
 
+      busyRef.current = true;
       setIsParsing(true);
-      
-      setQueue(prev => prev.map(item => 
+
+      setQueue(prev => prev.map(item =>
         item.id === nextItem.id ? { ...item, status: 'processing' } : item
       ));
 
       let fileToSend = nextItem.file;
-      
+
       // Parse Excel files on the client side to bypass Vercel's 4.5MB payload limit
-      if (fileToSend.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || 
-          fileToSend.type === "application/vnd.ms-excel" || 
-          fileToSend.name.endsWith('.xlsx') || 
-          fileToSend.name.endsWith('.xls') ||
-          fileToSend.name.endsWith('.csv')) {
+      if (fileToSend.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+          fileToSend.type === "application/vnd.ms-excel" ||
+          fileToSend.name.toLowerCase().endsWith('.xlsx') ||
+          fileToSend.name.toLowerCase().endsWith('.xls') ||
+          fileToSend.name.toLowerCase().endsWith('.csv')) {
         try {
+          const xlsx = await import('xlsx');
           const arrayBuffer = await fileToSend.arrayBuffer();
           const workbook = xlsx.read(arrayBuffer, { type: "array" });
-          const sheetName = workbook.SheetNames[0];
-          const sheet = workbook.Sheets[sheetName];
-          
+
+
           // Convert to JSON to automatically strip empty rows and columns
-          const jsonData = xlsx.utils.sheet_to_json(sheet);
+          const jsonData = Object.fromEntries(workbook.SheetNames.map(name => [name, xlsx.utils.sheet_to_json(workbook.Sheets[name])]));
           const jsonString = JSON.stringify(jsonData);
-          
+
           // Create a new File object with the JSON content (using window.File to avoid conflict with lucide-react File icon)
           fileToSend = new window.File([jsonString], fileToSend.name + '.json', { type: 'application/json' });
         } catch (e) {
@@ -171,7 +213,7 @@ export default function App() {
       }
 
       try {
-        const res = await fetch('https://doc-ai-gamma.vercel.app/api/parse', {
+        const res = await fetch(`${API_BASE}/api/parse`, {
           method: 'POST',
           body: formData,
         });
@@ -189,27 +231,28 @@ export default function App() {
         }
 
         const data = await res.json();
-        
+
         const newDoc = {
           id: data.id,
-          filename: '', 
-          originalName: data.originalName,
+          filename: '',
+          originalName: nextItem.file.name,
           mimeType: nextItem.file.type,
           extractedData: data.extractedData,
           typeSlug: data.typeSlug,
           createdAt: new Date().toISOString(),
         };
 
-        setQueue(prev => prev.map(item => 
+        setQueue(prev => prev.map(item =>
           item.id === nextItem.id ? { ...item, status: 'done', result: newDoc } : item
         ));
-        
+
         await fetchDocuments();
       } catch (err: any) {
-        setQueue(prev => prev.map(item => 
+        setQueue(prev => prev.map(item =>
           item.id === nextItem.id ? { ...item, status: 'error', error: err.message } : item
         ));
       } finally {
+        busyRef.current = false;
         setIsParsing(false);
       }
     };
@@ -230,7 +273,7 @@ export default function App() {
     setError(null);
 
     try {
-      const res = await fetch('https://doc-ai-gamma.vercel.app/api/types', {
+      const res = await fetch(`${API_BASE}/api/types`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newTypeName, slug: newTypeSlug, prompt: newTypePrompt }),
@@ -252,7 +295,7 @@ export default function App() {
       setNewTypeName('');
       setNewTypeSlug('');
       setNewTypePrompt('');
-      
+
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -263,12 +306,12 @@ export default function App() {
   const handleUpdateType = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingTypeId) return;
-    
+
     setIsCreatingType(true);
     setError(null);
 
     try {
-      const res = await fetch(`https://doc-ai-gamma.vercel.app/api/types/${editingTypeId}`, {
+      const res = await fetch(`${API_BASE}/api/types/${editingTypeId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newTypeName, slug: newTypeSlug, prompt: newTypePrompt }),
@@ -316,13 +359,14 @@ export default function App() {
   const handleDeleteType = async (id: number) => {
     if (!confirm('Ви впевнені, що хочете видалити цей шаблон?')) return;
     try {
-      await fetch(`https://doc-ai-gamma.vercel.app/api/types/${id}`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE}/api/types/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error((await res.json()).error || 'Не вдалося видалити шаблон');
       await fetchTypes();
       if (selectedTypeSlug === documentTypes.find(t => t.id === id)?.slug) {
         setSelectedTypeSlug('custom');
       }
     } catch (err) {
-      console.error('Failed to delete type', err);
+      setError(err instanceof Error ? err.message : 'Не вдалося видалити шаблон');
     }
   };
 
@@ -335,12 +379,12 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex bg-gray-50 text-gray-900 font-sans">
+    <div className="app-shell min-h-screen flex bg-gray-50 text-gray-900 font-sans">
       {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-gray-200 flex flex-col">
+      <aside className="sidebar w-64 bg-white border-r border-gray-200 flex flex-col">
         <div className="h-16 flex items-center px-6 border-b border-gray-200">
-          <Database className="w-6 h-6 text-indigo-600 mr-2" />
-          <h1 className="text-xl font-semibold tracking-tight">DocuParse AI</h1>
+          <span className="brand-icon"><Sparkles size={22} /></span>
+          <h1 className="text-xl font-semibold tracking-tight">Doc<span className="brand-dot">.</span>AI</h1>
         </div>
         <nav className="flex-1 p-4 space-y-1">
           <button
@@ -351,7 +395,7 @@ export default function App() {
             )}
           >
             <Upload className="w-5 h-5" />
-            Парсинг файлів
+            Робочий простір
           </button>
           <button
             onClick={() => setActiveTab('types')}
@@ -361,7 +405,7 @@ export default function App() {
             )}
           >
             <LayoutTemplate className="w-5 h-5" />
-            Шаблони (Типи)
+            Шаблони
           </button>
           <button
             onClick={() => setActiveTab('history')}
@@ -381,46 +425,63 @@ export default function App() {
             )}
           >
             <TerminalSquare className="w-5 h-5" />
-            API Документація
+            API та інтеграції
           </button>
         </nav>
+        <div className="sidebar-note"><div className="eyebrow">DOCUMENT INTELLIGENCE</div><p>Менше рутини.<br/>Більше змісту.</p><span>Документи → структуровані дані</span></div>
+        <div className="sidebar-profile"><span className="avatar">D</span><div><strong>Doc.AI Workspace</strong><small>Ваш простір для документів</small></div></div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto">
-        <div className="max-w-5xl mx-auto p-8">
-          
+      <main className="main-content flex-1 overflow-y-auto">
+        <header className="topbar"><span>Workspace <span className="breadcrumb">/ {({ parse: 'Обробка документів', types: 'Шаблони', history: 'Історія', api: 'API' })[activeTab]}</span></span><span className="connection"><i className={health ? 'online' : ''}/>{health ? health.storage === 'local' ? 'Локальний простір' : 'Сервер підключено' : 'Підключення…'}</span></header>
+        <div className="workspace max-w-5xl mx-auto p-8">
+
+          {error && <div role="alert" className="error-banner"><AlertCircle size={18}/><span>{error}</span><button aria-label="Закрити помилку" onClick={() => setError(null)}><X size={16}/></button></div>}
+          {notice && <div role="status" className="toast">{notice}</div>}
           {/* PARSE TAB */}
           {activeTab === 'parse' && (
-            <div className="space-y-6 max-w-2xl">
-              <div>
-                <h2 className="text-2xl font-semibold mb-1">Завантаження та Парсинг</h2>
-                <p className="text-gray-500 text-sm">Виберіть файл та шаблон для автоматичного витягування даних.</p>
+            <div className="parse-workspace space-y-6">
+              <div className="page-heading"><div><div className="eyebrow">РОЗУМНА РОБОТА З ДОКУМЕНТАМИ</div>
+                <h2>Від файлу — до даних<span>.</span></h2>
+                <p>Завантажуйте документи. Отримуйте структуру. Зосередьтеся на важливому.</p></div><span className="heading-symbol"><Sparkles/></span>
               </div>
+              <div className="stats-grid">
+                <div><span className="stat-icon"><FileText/></span><div><small>В історії</small><strong>{documents.length}<em>документів</em></strong></div></div>
+                <div><span className="stat-icon"><LayoutTemplate/></span><div><small>Готові до роботи</small><strong>{documentTypes.length}<em>шаблони</em></strong></div></div>
+                <div><span className="stat-icon"><CheckCircle2/></span><div><small>У поточній сесії</small><strong>{queue.filter(i => i.status === 'done').length}<em>оброблено</em></strong></div></div>
+              </div>
+              {health && !health.aiConfigured && <div className="setup-banner"><Sparkles size={20}/><div><strong>Простір готовий. Підключіть AI для розпізнавання.</strong><p>Додайте GEMINI_API_KEY у .env.local та перезапустіть сервер. Завантаження й шаблони вже доступні.</p></div></div>}
+              <div className="parse-grid"><div>
 
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <div 
+              <div className="upload-card bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <div className="section-heading"><h3><span>01</span> Додайте документи</h3><span>До 10 MB / файл</span></div>
+                <div
                   className={cn(
-                    "border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer",
+                    "dropzone border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer",
+                    dragging && "is-dragging",
                     queue.length > 0 ? "border-indigo-500 bg-indigo-50" : "border-gray-300 hover:border-indigo-400 hover:bg-gray-50"
                   )}
-                  onDragOver={(e) => e.preventDefault()}
+                  role="button" tabIndex={0} aria-label="Додати документи"
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputRef.current?.click(); } }}
+                  onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+                  onDragLeave={() => setDragging(false)}
                   onDrop={handleDrop}
                   onClick={() => fileInputRef.current?.click()}
                 >
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    className="hidden" 
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    className="hidden"
                     onChange={handleFileChange}
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                    accept=".pdf,.docx,.xls,.xlsx,.csv,.json,.txt,.png,.jpg,.jpeg,.webp"
                     multiple
                   />
-                  
+
                   <div className="flex flex-col items-center gap-2 text-gray-500">
-                    <Upload className="w-8 h-8 text-gray-400 mb-2" />
-                    <p className="text-sm font-medium text-gray-900">Натисніть або перетягніть файли сюди</p>
-                    <p className="text-xs">PDF, Word, Excel, або Зображення (Скани). Можна вибрати декілька.</p>
+                    <span className="upload-icon"><Upload size={28}/></span>
+                    <p className="text-sm font-medium text-gray-900">Перетягніть документи сюди</p>
+                    <span className="choose-files">Вибрати файли <Plus size={15}/></span><p className="text-xs">PDF, DOCX, Excel, CSV, JSON, TXT, PNG, JPG, WebP</p>
                   </div>
                 </div>
 
@@ -428,7 +489,7 @@ export default function App() {
                   <div className="mt-6 space-y-3">
                     <div className="flex justify-between items-center mb-2">
                       <h3 className="text-sm font-medium text-gray-700">Черга обробки ({queue.length})</h3>
-                      <button onClick={clearQueue} className="text-xs text-red-600 hover:text-red-800">Очистити</button>
+                      <button disabled={isParsing || isQueueActive} onClick={clearQueue} className="text-xs text-red-600 hover:text-red-800">Очистити</button>
                     </div>
                     {queue.map((item) => (
                       <div key={item.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-md border border-gray-100">
@@ -439,8 +500,11 @@ export default function App() {
                             <p className="text-xs text-gray-500">{(item.file.size / 1024 / 1024).toFixed(2)} MB</p>
                           </div>
                         </div>
-                        <div className="flex-shrink-0 ml-4 flex items-center gap-2">
-                          <button 
+                        <div className="queue-actions flex-shrink-0 ml-4 flex items-center gap-2">
+                          {item.result && <button title="Завантажити JSON" onClick={() => exportJson(item.result!.extractedData, item.file.name)}><Download size={16}/></button>}
+                          {item.status === 'error' && <button title="Повторити" disabled={isParsing || isQueueActive} onClick={() => setQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'pending', error: undefined } : q))}><RotateCcw size={16}/></button>}
+                          {!isParsing && !isQueueActive && <button title="Прибрати файл" onClick={() => setQueue(prev => prev.filter(q => q.id !== item.id))}><X size={16}/></button>}
+                          <button
                             onClick={() => setPreviewItem(item)}
                             className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
                             title="Попередній перегляд"
@@ -457,11 +521,14 @@ export default function App() {
                   </div>
                 )}
 
+                <div className="section-heading config-heading"><h3><span>02</span> Налаштуйте витягування</h3></div>
                 <div className="mt-6">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Тип документа (Шаблон)
                   </label>
                   <select
+                    disabled={isParsing || isQueueActive}
+                    aria-label="Шаблон документа"
                     value={selectedTypeSlug}
                     onChange={(e) => setSelectedTypeSlug(e.target.value)}
                     className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
@@ -479,6 +546,8 @@ export default function App() {
                       Власний Промпт
                     </label>
                     <textarea
+                      disabled={isParsing || isQueueActive}
+                      aria-label="Інструкція для AI"
                       value={customPrompt}
                       onChange={(e) => setCustomPrompt(e.target.value)}
                       rows={4}
@@ -492,7 +561,7 @@ export default function App() {
                   <div className="mt-6 flex justify-end">
                     <button
                       onClick={() => setIsQueueActive(true)}
-                      disabled={isQueueActive || isParsing}
+                      disabled={isQueueActive || isParsing || !health?.aiConfigured || (selectedTypeSlug === 'custom' && !customPrompt.trim())}
                       className="px-6 py-2.5 bg-indigo-600 text-white font-medium text-sm rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
                     >
                       {isQueueActive ? (
@@ -510,12 +579,9 @@ export default function App() {
                   </div>
                 )}
 
-                {error && (
-                  <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md flex items-start gap-2 text-red-700 text-sm">
-                    <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                    <p>{error}</p>
-                  </div>
-                )}
+
+              </div></div>
+              <aside className="guide-panel"><div className="eyebrow">ЯК ЦЕ ПРАЦЮЄ</div><h3>Ваш документ.<br/>Потрібні вам дані.</h3><p>Від рахунків і договорів до таблиць та сканів — один зрозумілий процес.</p><ol><li><span>1</span><div><strong>Додайте файли</strong><p>Один документ або цілий пакет.</p></div></li><li><span>2</span><div><strong>Оберіть, що витягти</strong><p>Шаблон або власна інструкція.</p></div></li><li><span>3</span><div><strong>Заберіть результат</strong><p>Перегляньте та завантажте JSON.</p></div></li></ol><div className="guide-footer"><Code size={18}/><span>Інтегруйте у ваш процес</span><button aria-label="Відкрити API" onClick={() => setActiveTab('api')}><ArrowUpRight size={18}/></button></div></aside>
               </div>
             </div>
           )}
@@ -573,11 +639,7 @@ export default function App() {
                         placeholder="Витягни наступні поля..."
                       />
                     </div>
-                    {error && (
-                      <div className="p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
-                        {error}
-                      </div>
-                    )}
+
                     <div className="flex gap-2">
                       <button
                         type="submit"
@@ -613,14 +675,14 @@ export default function App() {
                           </div>
                         </div>
                         <div className="flex gap-1">
-                          <button 
+                          <button
                             onClick={() => handleEditClick(type)}
                             className="text-gray-400 hover:text-indigo-600 transition-colors p-1"
                             title="Редагувати"
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
                           </button>
-                          <button 
+                          <button
                             onClick={() => handleDeleteType(type.id)}
                             className="text-gray-400 hover:text-red-500 transition-colors p-1"
                             title="Видалити"
@@ -652,16 +714,17 @@ export default function App() {
                 <p className="text-gray-500 text-sm">Перегляд раніше витягнутих даних з документів.</p>
               </div>
 
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-1 overflow-hidden">
+              <div className="history-toolbar"><label><Search size={18}/><input aria-label="Пошук документів" placeholder="Пошук за назвою або шаблоном…" value={search} onChange={e => setSearch(e.target.value)}/></label><button onClick={fetchDocuments}><RotateCcw size={16}/> Оновити</button></div>
+              <div className="history-panel bg-white rounded-xl shadow-sm border border-gray-200 flex flex-1 overflow-hidden">
                 {/* Document List Sidebar */}
                 <div className="w-1/3 border-r border-gray-200 overflow-y-auto bg-gray-50/30">
-                  {documents.length === 0 ? (
+                  {filteredDocuments.length === 0 ? (
                     <div className="p-6 text-center text-sm text-gray-500">
-                      Історія порожня.
+                      {search ? "Нічого не знайдено" : "Оброблені документи з’являться тут."}
                     </div>
                   ) : (
                     <ul className="divide-y divide-gray-100">
-                      {documents.map((doc) => (
+                      {filteredDocuments.map((doc) => (
                         <li key={doc.id}>
                           <button
                             onClick={() => setSelectedDoc(doc)}
@@ -688,13 +751,11 @@ export default function App() {
                     </ul>
                   )}
                 </div>
-                
+
                 {/* JSON Viewer */}
                 <div className="w-2/3 bg-[#1e1e1e] overflow-y-auto p-4 relative">
                   {selectedDoc ? (
-                    <pre className="text-sm font-mono text-[#d4d4d4] whitespace-pre-wrap">
-                      {JSON.stringify(selectedDoc.extractedData, null, 2)}
-                    </pre>
+                    <><div className="result-toolbar"><span>{selectedDoc.originalName}</span><button onClick={() => copyJson(selectedDoc.extractedData)} title="Копіювати JSON"><Copy size={16}/></button><button onClick={() => exportJson(selectedDoc.extractedData, selectedDoc.originalName)} title="Завантажити JSON"><Download size={16}/></button></div><pre className="text-sm font-mono text-[#d4d4d4] whitespace-pre-wrap">{JSON.stringify(selectedDoc.extractedData, null, 2)}</pre></>
                   ) : (
                     <div className="h-full flex items-center justify-center text-gray-500 text-sm">
                       Виберіть документ для перегляду даних
@@ -709,7 +770,7 @@ export default function App() {
           {activeTab === 'api' && (
             <div className="space-y-6 max-w-4xl">
               <div>
-                <h2 className="text-2xl font-semibold mb-1">API Документація</h2>
+                <h2 className="text-2xl font-semibold mb-1">API та інтеграції</h2>
                 <p className="text-gray-500 text-sm">Інструкція для інтеграції сторонніх сервісів з вашим додатком.</p>
               </div>
 
@@ -717,7 +778,7 @@ export default function App() {
                 <div>
                   <h3 className="text-lg font-medium mb-2">Базовий URL</h3>
                   <code className="block bg-gray-50 p-3 rounded-md border border-gray-100 text-sm font-mono text-gray-800">
-                    https://doc-ai-gamma.vercel.app
+                    {window.location.origin}
                   </code>
                 </div>
 
@@ -728,13 +789,13 @@ export default function App() {
                     <code className="text-sm font-mono text-gray-800">/api/parse/:slug</code>
                   </div>
                   <p className="text-sm text-gray-600 mb-4">
-                    Відправте файл через <code>multipart/form-data</code> на цей ендпоінт. 
+                    Відправте файл через <code>multipart/form-data</code> на цей ендпоінт.
                     Замість <code>:slug</code> підставте ідентифікатор вашого шаблону (наприклад, <code>invoice</code>).
                   </p>
 
                   <h4 className="font-medium text-sm text-gray-700 mb-2">Приклад запиту (cURL):</h4>
                   <pre className="bg-gray-900 text-gray-100 p-4 rounded-md text-sm font-mono overflow-x-auto">
-{`curl -X POST https://doc-ai-gamma.vercel.app/api/parse/invoice \\
+{`curl -X POST ${window.location.origin}/api/parse/invoice \\
   -H "Accept: application/json" \\
   -F "document=@/path/to/your/file.pdf"`}
                   </pre>
@@ -752,7 +813,7 @@ export default function App() {
 
                   <h4 className="font-medium text-sm text-gray-700 mb-2">Приклад запиту (cURL):</h4>
                   <pre className="bg-gray-900 text-gray-100 p-4 rounded-md text-sm font-mono overflow-x-auto">
-{`curl -X POST https://doc-ai-gamma.vercel.app/api/parse \\
+{`curl -X POST ${window.location.origin}/api/parse \\
   -H "Accept: application/json" \\
   -F "document=@/path/to/your/file.pdf" \\
   -F "prompt=Витягни ім'я та суму у форматі JSON"`}
@@ -783,7 +844,7 @@ export default function App() {
 
       {/* Preview Modal */}
       {previewItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+        <div role="dialog" aria-modal="true" aria-label="Попередній перегляд документа" className="preview-modal fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl h-[85vh] flex flex-col overflow-hidden border border-gray-200">
             <div className="flex justify-between items-center px-6 py-4 border-b border-gray-200 bg-gray-50">
               <div className="flex items-center gap-3 overflow-hidden">
@@ -796,14 +857,14 @@ export default function App() {
                   {previewItem.status === 'error' && <span className="flex items-center gap-1 text-xs font-medium text-red-600 bg-red-100 px-2 py-1 rounded-full"><AlertCircle className="w-3 h-3"/> Помилка</span>}
                 </div>
               </div>
-              <button 
-                onClick={() => setPreviewItem(null)} 
+              <button
+                autoFocus aria-label="Закрити перегляд" onClick={() => setPreviewItem(null)}
                 className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-200 rounded-full transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <div className="flex-1 flex overflow-hidden">
               {/* Left: Original File */}
               <div className="w-1/2 border-r border-gray-200 bg-gray-100 p-4 flex flex-col">
@@ -822,7 +883,7 @@ export default function App() {
                   )}
                 </div>
               </div>
-              
+
               {/* Right: Extracted Data */}
               <div className="w-1/2 p-4 flex flex-col bg-gray-900 text-gray-100">
                 <h4 className="font-medium text-sm text-gray-400 mb-3 uppercase tracking-wider">Результат парсингу (JSON)</h4>
