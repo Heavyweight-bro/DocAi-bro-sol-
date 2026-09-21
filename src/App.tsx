@@ -84,8 +84,13 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setPreviewId(null); };
     window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
   }, []);
-  const applySettings = (value: SettingsData) => { setSettings(value); setHealth(prev => prev ? {...prev, aiConfigured: value.providers.some(p => p.id === value.provider && p.configured)} : prev); };
+  const applySettings = (value: SettingsData) => {
+    setSettings(value);
+    const ready = value.providers.some(p => p.id === value.provider && p.configured);
+    setHealth(prev => prev ? { ...prev, aiConfigured: ready } : prev);
+  };
   const activeProvider = settings?.providers.find(p => p.id === settings.provider);
+  const otherConfigured = settings?.providers.find(p => p.configured && p.id !== settings.provider);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -457,7 +462,7 @@ export default function App() {
                 <div><span className="stat-icon"><LayoutTemplate/></span><div><small>Готові до роботи</small><strong>{documentTypes.length}<em>шаблони</em></strong></div></div>
                 <div><span className="stat-icon"><CheckCircle2/></span><div><small>У поточній сесії</small><strong>{queue.filter(i => i.status === 'done').length}<em>оброблено</em></strong></div></div>
               </div>
-              {health && !health.aiConfigured && <div className="setup-banner"><AlertCircle size={18}/><div><strong>AI-провайдер не підключений</strong><p>Додайте API-ключ OpenAI, Gemini або Anthropic у налаштуваннях.</p></div><button className="secondary-button" onClick={()=>setActiveTab('settings')}>Налаштувати</button></div>}
+              {health && !health.aiConfigured && <div className="setup-banner"><AlertCircle size={18}/><div><strong>{otherConfigured ? 'Обраний провайдер без ключа' : 'AI-провайдер не підключений'}</strong><p>{otherConfigured ? `${names[otherConfigured.id]} уже підключено, але за замовчуванням стоїть ${settings ? names[settings.provider] : 'інший'} без ключа. У налаштуваннях виберіть підключеного провайдера та натисніть «Зберегти простір».` : 'Додайте API-ключ OpenAI, Gemini або Anthropic у налаштуваннях. Після збереження ключа цей провайдер стане основним автоматично.'}</p></div><button className="secondary-button" onClick={()=>setActiveTab('settings')}>Налаштувати</button></div>}
               <div className="parse-grid"><div>
 
               <div className="upload-card bg-white rounded-xl shadow-sm border border-gray-200 p-6">

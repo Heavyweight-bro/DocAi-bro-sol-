@@ -18,7 +18,9 @@ export default function Settings({ data, onChange }: { data: SettingsData; onCha
     try {
       const res = await fetch('/api/settings', {method:'PUT',headers:{'Content-Type':'application/json','X-DocAI-Settings':'1'},body:JSON.stringify(body)});
       const result = await res.json(); if(!res.ok) throw new Error(result.error);
-      onChange(result); setKeys(prev => ({...prev,[scope]:''})); setFeedback(prev => ({...prev,[scope]:{ok:true,text:'Збережено. Зміни діють для наступного запиту.'}}));
+      onChange(result); setKeys(prev => ({...prev,[scope]:''})); setPrimary(result.provider);
+      const switched = scope !== 'workspace' && result.provider === scope && data.provider !== result.provider;
+      setFeedback(prev => ({...prev,[scope]:{ok:true,text: switched ? `Збережено. ${names[result.provider as Provider]} обрано провайдером за замовчуванням — можна обробляти документи.` : 'Збережено. Зміни діють для наступного запиту.'}}));
     } catch(e) { setFeedback(prev=>({...prev,[scope]:{ok:false,text:e instanceof Error ? e.message : 'Помилка збереження'}})); }
     finally {setBusy('');}
   }

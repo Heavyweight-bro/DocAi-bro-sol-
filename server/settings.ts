@@ -60,8 +60,17 @@ export function updateSettings(input: any) {
     if (key !== undefined && key !== '') {
       if (typeof key !== 'string' || key.trim().length < 12 || key.length > 4096 || /\s/.test(key.trim())) throw new Error('Перевірте API-ключ: він не має містити пробілів');
       next.keys[provider] = key.trim();
+      // Saving a key for provider X must enable processing: if the current default has no key, switch to X.
+      const defaultHasKey = !!(envKeys()[next.provider] || next.keys[next.provider]);
+      if (!defaultHasKey) next.provider = provider;
     }
-    if (removeKey === true) delete next.keys[provider];
+    if (removeKey === true) {
+      delete next.keys[provider];
+      if (next.provider === provider && !(envKeys()[provider])) {
+        const fallback = providerIds.find(id => envKeys()[id] || next.keys[id]);
+        if (fallback) next.provider = fallback;
+      }
+    }
   }
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   if (!existsSync(masterFile)) writeFileSync(masterFile, randomBytes(32), { mode: 0o600, flag: 'wx' });
