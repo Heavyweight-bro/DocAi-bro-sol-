@@ -4,12 +4,13 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx app.ts",
-    "start": "tsx app.ts",
+    "dev": "node --import tsx app.ts",
+    "start": "node --import tsx app.ts",
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:smoke": "node scripts/verify.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.48.0",
@@ -38,6 +39,7 @@
     "@types/multer": "^2.1.0",
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",
+    "playwright": "^1.51.1",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
