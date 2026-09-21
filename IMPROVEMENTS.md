@@ -1,39 +1,43 @@
-# Review and improvements
+# Зміни та подальший розвиток
 
-## Implemented
+## Реалізовано
 
-- Replaced hardcoded Vercel API calls with same-origin requests, avoiding accidental uploads from local development to an unrelated live deployment.
-- Added a responsive workspace with service status, actual document/template/session counts, upload guidance and explicit missing-AI-key state.
-- Added local development storage for templates/history and sample extraction templates. No fake AI responses or invented document history.
-- Load `.env.local`/`.env` on the server; remove AI key substitutions from Vite's browser build configuration.
-- Validate template slugs and upload extensions/size, reject empty client files, deduplicate queue uploads, allow individual removal and retry.
-- Keep active previews synchronized with queue status; protect the active queue from clearing and configuration changes; prevent duplicate processing effects.
-- Add JSON downloads, history JSON copy, search and refresh; show API failures instead of silently ignoring them.
-- Preserve every Excel worksheet, including names; defer the spreadsheet library download until needed.
-- Use `node --import tsx` for startup to avoid an unnecessary CLI IPC dependency.
+- Корпоративний інтерфейс із темною навігацією, нейтральними панелями та мобільною адаптацією.
+- Налаштування назви компанії, незалежний вибір OpenAI/Gemini/Anthropic, API-ключа й моделі. Збереження, видалення, перевірка ключів; автоматичного fallback немає.
+- Зашифровані локальні ключі; production-конфігурація через серверне середовище. API не повертає збережені секрети.
+- Адаптери OpenAI Responses, Gemini GenerateContent та Anthropic Messages. PDF/зображення передаються як файли; підтримка залежить від моделі.
+- Підказки до промптів і приклади рахунків, договорів та виписок.
+- Розділ «Впровадження» та [пояснення для компанії](docs/COMPANY_GUIDE.uk.md).
+- Читання збереженого результату через `GET /api/documents/:id`.
+- Запити до власного сервера, читання `.env.local` на backend, локальне сховище шаблонів/історії.
+- Перевірка slug, розміру й розширення файлу; черга у вкладці, повторна спроба, перегляд, пошук, JSON-експорт.
+- Обробка всіх аркушів Excel та завантаження бібліотеки таблиць у браузері за потреби.
+- Оновлені README, інструкція розгортання зі схемою Supabase та документація API.
 
-## Highest-priority follow-up work
+## Поточні обмеження
 
-1. Authentication and authorization: APIs currently have no user access control. Before a shared/public deployment, introduce sign-in, ownership checks, tenant isolation and Supabase RLS; restrict CORS to intended origins.
-2. Durable background jobs: processing is synchronous and the browser queue is lost on refresh. Add a persisted queue, job IDs, cancellation, backoff and resumable uploads. Use object storage for uploads that exceed serverless request limits.
-3. Extraction quality: define JSON schemas per template, validate model output, show missing fields and provide human review before downstream posting. Validate against a representative document corpus.
-4. Observability and pagination: add request IDs, timing/cost metrics and bounded/paginated history queries. Avoid logging document data/provider error details in production.
-5. Parser hardening: MIME/content verification, decompression limits and spreadsheet dependency review. Extension and upload-size checks alone do not protect against malformed documents.
-6. AI provider configuration: make models configurable and validate the selected models against the actual account. The inherited Gemini model and OpenAI fallback have not been verified with live credentials; scanned PDF fallback currently depends on text extraction.
-7. Maintainability/accessibility: split the large App component into queue, templates, history and preview modules; complete modal focus trapping and keyboard/screen-reader testing.
+- Немає входу користувачів, ролей, ізоляції компаній та інтеграційних API-ключів. Назва компанії — лише підпис.
+- Немає серверної черги: обробка синхронна, очікування в браузері не відновлюється після закриття вкладки.
+- Локальне JSON-сховище — для одного процесу розробки. Оригінали файлів і локальні збої обробки не архівуються.
+- Шифрування з ключем на тому самому комп’ютері не захищає від його адміністратора.
+- Перевірка підключення отримує список моделей, але не перевіряє баланс, підтримку формату чи точність.
+- Відповідь перевіряється як JSON-об’єкт, але не за схемою конкретного шаблону. Для обліку потрібна додаткова перевірка.
+- `.doc` не підтримується; Excel після конвертації браузером може записуватися з суфіксом `.json`.
+- Ліміти хостингу можуть бути меншими за локальні. OAuth-входу до AI-провайдерів немає.
 
-## Scope and known limitations
+## Наступні кроки
 
-- Local file storage is for development only; it is not transactional or suitable for multiple server instances. Original uploads are held in memory during processing and are not retained in the local history.
-- Legacy `.doc` is not supported by the existing DOCX parser; the UI now offers `.docx` rather than promising unsupported `.doc` parsing.
-- The API continues to preserve its existing response shape. Excel uploads converted to JSON may be recorded with a `.json` suffix in server-side history.
-- AI extraction still requires a Gemini key; OpenAI is a fallback, not an independently selectable primary provider.
-- Production deployment, authentication and real AI inference are outside this local verification.
+1. **Доступ:** вхід, ролі, належність документа організації, політики БД, інтеграційні ключі та журнал дій.
+2. **Стійка обробка:** файлове сховище, серверна черга, worker, ID завдань, повтори з паузою, ліміти та захист від дублювання.
+3. **Якість:** JSON Schema для шаблонів, перевірка сум/дат/полів, погодження перед передачею в облік.
+4. **Експлуатація:** пагінація, ліміти запитів, метрики витрат/часу, контроль логів, відновлення резервних копій.
+5. **Парсери:** перевірка фактичного формату, обмеження розпакування й обсягу таблиць, перегляд залежностей.
+6. **Підтримка:** подальше розділення App-компонента, керування фокусом і доступність клавіатурної навігації.
 
-## Verification
+## Статус перевірок
 
-- TypeScript (`npm run lint`) and production build pass.
-- API smoke checks pass: health, template creation/update/deletion, duplicate/invalid slugs, oversized uploads.
-- Headless Chromium checks pass at desktop and 390px mobile widths: file selection, missing-key state, preview/Escape, navigation, history search, no horizontal overflow, no page exceptions.
-- Desktop and mobile screenshots were visually reviewed; see docs/screenshots/.
-- Real AI inference and Supabase integration were not exercised because credentials were not configured.
+TypeScript і production-збірка пройшли під час попередньої перевірки цієї версії. Під час оновлення документації повторно не запускалися.
+
+Раніше виконувалися API/UI smoke-перевірки та тести адаптерів із підміненими відповідями. Smoke-тести після останнього додавання маршруту документа за ID та загальної перевірки Origin не повторювалися. Скрипти: `scripts/verify.mjs`, `scripts/verify-providers.mjs`; команди — у [README](README.md).
+
+Реальні AI-запити, Supabase, SQL на живій БД та production/Vercel-розгортання не перевірялися. Публікація гілки не означає готовності до багатокористувацької експлуатації.

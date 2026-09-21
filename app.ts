@@ -5,11 +5,10 @@ import multer from "multer";
 import cors from "cors";
 import path from "path";
 import { createClient } from "@supabase/supabase-js";
-import { GoogleGenAI } from "@google/genai";
-import OpenAI from "openai";
+import { connection, publicSettings, updateSettings, canEditSettings, isProvider } from "./server/settings";
+import { extractDocument, checkConnection } from "./server/providers";
 import mammoth from "mammoth";
 import * as xlsx from "xlsx";
-import pdfParse from "pdf-parse-new";
 
 // Initialize Supabase
 const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -29,8 +28,13 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 
 const app = express();
 
 // --- Middleware ---
-app.use(cors());
-app.use(express.json());
+app.use(cors({ origin: process.env.APP_ORIGIN || false }));
+app.use(express.json({ limit: '32kb' }));
+app.use('/api', (req, res, next) => {
+  const origin = req.get('origin');
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && origin && origin !== `${req.protocol}://${req.get('host')}` && origin !== process.env.APP_ORIGIN) return res.status(403).json({ error: 'Запит з іншого сайту відхилено' });
+  next();
+});
 
 // --- API Routes ---
 
@@ -38,12 +42,30 @@ app.get("/api/health", (req, res) => {
   res.json({
     status: "ok",
     supabaseConfigured: !!isSupabaseConfigured,
-    aiConfigured: !!(process.env.GEMINI_API_KEY1 || process.env.GEMINI_API_KEY),
+    aiConfigured: !!connection().key,
+    provider: connection().provider,
     storage: isSupabaseConfigured ? "supabase" : isLocalMode ? "local" : "none",
     maxUploadBytes: 10 * 1024 * 1024,
     env: process.env.NODE_ENV,
     isVercel: !!process.env.VERCEL
   });
+});
+
+app.get('/api/settings', (req, res) => {
+  res.set('Cache-Control', 'no-store').json({ ...publicSettings(), editable: canEditSettings(req) });
+});
+app.use('/api/settings', (req, res, next) => {
+  if (!canEditSettings(req) || req.get('x-docai-settings') !== '1' || !req.is('application/json')) return res.status(403).json({ error: 'Зміна ключів доступна лише локально. На сервері використайте змінні середовища.' });
+  next();
+});
+app.put('/api/settings', (req, res) => {
+  try { res.set('Cache-Control', 'no-store').json(updateSettings(req.body)); }
+  catch (error: any) { res.status(400).json({ error: error.message }); }
+});
+app.post('/api/settings/test', async (req, res) => {
+  if (!isProvider(req.body.provider)) return res.status(400).json({ error: 'Невідомий AI-провайдер' });
+  try { res.json(await checkConnection(req.body.provider)); }
+  catch (error: any) { res.status(400).json({ error: error.name === 'TimeoutError' ? 'Перевірка перевищила 15 секунд.' : error.message }); }
 });
 
 app.get("/api/types", async (req, res, next) => {
@@ -152,17 +174,28 @@ app.get("/api/documents", async (req, res, next) => {
   }
 });
 
+app.get('/api/documents/:id', async (req, res, next) => {
+  try {
+    if (!/^[1-9]\d*$/.test(req.params.id)) return res.status(400).json({ error: 'Некоректний ID документа' });
+    if (isLocalMode) {
+      const document = localStore.documents.find(d => String(d.id) === req.params.id);
+      return document ? res.json(document) : res.status(404).json({ error: 'Документ не знайдено' });
+    }
+    if (!isSupabaseConfigured) return res.status(503).json({ error: 'Сховище не налаштовано' });
+    const { data: d, error } = await supabase.from('documents').select('*').eq('id', req.params.id).maybeSingle();
+    if (error) throw error;
+    if (!d) return res.status(404).json({ error: 'Документ не знайдено' });
+    return res.json({ ...d, originalName: d.original_name, mimeType: d.mime_type, typeSlug: d.type_slug, createdAt: d.created_at, extractedData: typeof d.extracted_data === 'string' ? JSON.parse(d.extracted_data) : d.extracted_data });
+  } catch (error) { next(error); }
+});
+
 app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: "Файл не надано" });
     if (!/\.(pdf|docx|xlsx|xls|csv|json|txt|png|jpe?g|webp)$/i.test(req.file.originalname)) return res.status(415).json({ error: 'Формат не підтримується. Використайте PDF, DOCX, Excel, CSV, JSON, TXT або зображення.' });
-    const apiKey = process.env.GEMINI_API_KEY1 || process.env.GEMINI_API_KEY;
-    if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
-      return res.status(503).json({ error: "Додайте GEMINI_API_KEY у .env.local та перезапустіть сервер для AI-обробки." });
-    }
-    const ai = new GoogleGenAI({ apiKey });
-
-    if (!req.file) return res.status(400).json({ error: "Файл не надано" });
+    const provider = req.body.provider || connection().provider;
+    if (!isProvider(provider)) return res.status(400).json({ error: 'Невідомий AI-провайдер' });
+    if (!connection(provider).key) return res.status(503).json({ error: 'Підключіть обраного AI-провайдера у налаштуваннях.' });
 
     const file = req.file;
     file.originalname = Buffer.from(file.originalname, 'latin1').toString('utf8');
@@ -184,7 +217,9 @@ app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (r
       if (!template) return res.status(404).json({ error: 'Шаблон не знайдено' });
       prompt = template.prompt;
     }
-    const mimeType = file.mimetype;
+    const extension = path.extname(file.originalname).toLowerCase();
+    const mimeByExtension: Record<string, string> = { '.pdf': 'application/pdf', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', '.xls': 'application/vnd.ms-excel', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', '.json': 'application/json' };
+    const mimeType = mimeByExtension[extension] || file.mimetype;
     let extractedData = {};
     let parseStatus = 'success';
     let errorMessage = '';
@@ -219,83 +254,13 @@ app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (r
       }
 
       const defaultPrompt = prompt || "Витягни всю ключову інформацію з цього документа та структуруй її у JSON об'єкт.";
-      const contents: any = { parts: [] };
-
-      if (isMultimodal && inlineData) {
-        contents.parts.push({ inlineData });
-      } else {
-        contents.parts.push({ text: `Вміст документа:\n${extractedText}\n\n` });
-      }
-      contents.parts.push({ text: defaultPrompt });
-
-      let extractedDataStr = "{}";
-      try {
-        const response = await ai.models.generateContent({
-          model: "gemini-3.1-pro-preview",
-          contents: contents,
-          config: { responseMimeType: "application/json" }
-        });
-        extractedDataStr = response.text || "{}";
-        aiModelUsed = "gemini-3.1-pro-preview";
-        promptTokens = response.usageMetadata?.promptTokenCount || 0;
-        completionTokens = response.usageMetadata?.candidatesTokenCount || 0;
-      } catch (geminiError: any) {
-        console.error("Gemini API failed, falling back to OpenAI:", geminiError?.message || geminiError);
-
-        const openAiKey = process.env.OPENAI_API_KEY;
-        if (!openAiKey) {
-          throw new Error(`Gemini API failed (${geminiError?.message || 'Unknown error'}) and OPENAI_API_KEY is not configured.`);
-        }
-
-        const openai = new OpenAI({ apiKey: openAiKey });
-
-        let openAiMessages: any[] = [
-          { role: "system", content: "You are a document extraction assistant. Return ONLY valid JSON." }
-        ];
-
-        if (isMultimodal && inlineData) {
-          if (inlineData.mimeType === "application/pdf") {
-            const pdfData = await pdfParse(file.buffer);
-            openAiMessages.push({
-              role: "user",
-              content: `Вміст документа:\n${pdfData.text}\n\n${defaultPrompt}`
-            });
-          } else {
-            openAiMessages.push({
-              role: "user",
-              content: [
-                { type: "text", text: defaultPrompt },
-                { type: "image_url", image_url: { url: `data:${inlineData.mimeType};base64,${inlineData.data}` } }
-              ]
-            });
-          }
-        } else {
-          openAiMessages.push({
-            role: "user",
-            content: `Вміст документа:\n${extractedText}\n\n${defaultPrompt}`
-          });
-        }
-
-        const completion = await openai.chat.completions.create({
-          model: "gpt-4o-mini",
-          messages: openAiMessages,
-          response_format: { type: "json_object" }
-        });
-
-        extractedDataStr = completion.choices[0].message.content || "{}";
-        aiModelUsed = "gpt-4o-mini (fallback)";
-        promptTokens = completion.usage?.prompt_tokens || 0;
-        completionTokens = completion.usage?.completion_tokens || 0;
-      }
-
-      try {
-        extractedData = JSON.parse(extractedDataStr);
-      } catch (e) {
-        console.error("Failed to parse Gemini response as JSON", e);
-        throw new Error("Failed to parse AI response as JSON");
-      }
+      const result = await extractDocument(provider, { text: extractedText, prompt: defaultPrompt, filename: file.originalname, inlineData: inlineData || undefined });
+      extractedData = result.data;
+      aiModelUsed = result.model;
+      promptTokens = result.inputTokens;
+      completionTokens = result.outputTokens;
     } catch (processError: any) {
-      console.error("Document processing error:", processError);
+      console.error("Document processing failed:", provider);
       parseStatus = 'failed';
       errorMessage = processError.message || String(processError);
       extractedData = { error: errorMessage, status: 'failed' };
@@ -354,7 +319,7 @@ app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (r
       if (parseStatus === 'failed') {
         return res.status(500).json({ error: errorMessage, id: Date.now() });
       }
-      const record = { id: Date.now(), originalName: file.originalname, mimeType, typeSlug: slug || 'custom', extractedData, createdAt: new Date().toISOString() };
+      const record = { aiModel: aiModelUsed, promptTokens, completionTokens, id: Date.now(), originalName: file.originalname, mimeType, typeSlug: slug || 'custom', extractedData, createdAt: new Date().toISOString() };
       if (isLocalMode) { localStore.documents.unshift(record); persistLocal(); }
       res.json(record);
     }
@@ -364,6 +329,8 @@ app.post(["/api/parse", "/api/parse/:slug"], upload.single("document"), async (r
     next(error);
   }
 });
+
+app.use('/api', (req, res) => res.status(404).json({ error: 'API-адресу не знайдено' }));
 
 // --- Static Files & Vite ---
 
@@ -405,7 +372,7 @@ app.use('/api', (err: any, req: express.Request, res: express.Response, next: ex
 // --- Start ---
 if (!process.env.VERCEL) {
   const port = Number(process.env.PORT) || 3000;
-  app.listen(port, "0.0.0.0", () => {
+  app.listen(port, process.env.HOST || (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1"), () => {
     console.log(`Server running on http://localhost:${port}`);
   });
 }

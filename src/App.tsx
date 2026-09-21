@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, FileText, FileSpreadsheet, Image as ImageIcon, File, Loader2, CheckCircle2, AlertCircle, Database, Code, LayoutTemplate, History, Plus, Trash2, TerminalSquare, Eye, X, Search, Download, Copy, Sparkles, ArrowUpRight, RotateCcw } from 'lucide-react';
+import { Upload, FileText, FileSpreadsheet, Image as ImageIcon, File, Loader2, CheckCircle2, AlertCircle, Database, Code, LayoutTemplate, History, Plus, Trash2, TerminalSquare, Eye, X, Search, Download, Copy, Sparkles, ArrowUpRight, RotateCcw, Settings as SettingsIcon, Building2 } from 'lucide-react';
+import Settings, { type SettingsData, names } from './components/Settings';
+import PromptGuide from './components/PromptGuide';
+import DeploymentGuide from './components/DeploymentGuide';
 import { cn } from './lib/utils';
 
 
@@ -31,7 +34,7 @@ type QueueItem = {
 };
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'parse' | 'types' | 'history' | 'api'>('parse');
+  const [activeTab, setActiveTab] = useState<'parse' | 'types' | 'history' | 'api' | 'settings' | 'deployment'>('parse');
 
   // Parse State
   const [queue, setQueue] = useState<QueueItem[]>([]);
@@ -58,6 +61,7 @@ export default function App() {
   const previewItem = queue.find(item => item.id === previewId) || null;
   const setPreviewItem = (item: QueueItem | null) => setPreviewId(item?.id || null);
   const [health, setHealth] = useState<{ aiConfigured: boolean; storage: string } | null>(null);
+  const [settings, setSettings] = useState<SettingsData | null>(null);
   const [search, setSearch] = useState('');
   const [notice, setNotice] = useState('');
   const [dragging, setDragging] = useState(false);
@@ -73,6 +77,7 @@ export default function App() {
     catch { setError('Не вдалося скопіювати. Скористайтеся завантаженням JSON.'); }
   };
   useEffect(() => {
+    fetch('/api/settings').then(r => { if (!r.ok) throw new Error(); return r.json(); }).then(setSettings).catch(() => setError('Не вдалося завантажити налаштування'));
     fetch('/api/health').then(r => { if (!r.ok) throw new Error(); return r.json(); }).then(setHealth).catch(() => setError('Сервер недоступний. Перевірте підключення.'));
   }, []);
   useEffect(() => { if (notice) { const timer = setTimeout(() => setNotice(''), 3000); return () => clearTimeout(timer); } }, [notice]);
@@ -80,6 +85,8 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setPreviewId(null); };
     window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
   }, []);
+  const applySettings = (value: SettingsData) => { setSettings(value); setHealth(prev => prev ? {...prev, aiConfigured: value.providers.some(p => p.id === value.provider && p.configured)} : prev); };
+  const activeProvider = settings?.providers.find(p => p.id === settings.provider);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -208,6 +215,7 @@ export default function App() {
       const formData = new FormData();
       formData.append('document', fileToSend);
       formData.append('slug', selectedTypeSlug);
+      if (settings) formData.append('provider', settings.provider);
       if (selectedTypeSlug === 'custom') {
         formData.append('prompt', customPrompt);
       }
@@ -258,7 +266,7 @@ export default function App() {
     };
 
     processQueue();
-  }, [queue, isParsing, selectedTypeSlug, customPrompt, isQueueActive]);
+  }, [queue, isParsing, selectedTypeSlug, customPrompt, isQueueActive, settings]);
 
   const clearQueue = () => {
     setQueue([]);
@@ -383,8 +391,8 @@ export default function App() {
       {/* Sidebar */}
       <aside className="sidebar w-64 bg-white border-r border-gray-200 flex flex-col">
         <div className="h-16 flex items-center px-6 border-b border-gray-200">
-          <span className="brand-icon"><Sparkles size={22} /></span>
-          <h1 className="text-xl font-semibold tracking-tight">Doc<span className="brand-dot">.</span>AI</h1>
+          <span className="brand-icon"><FileText size={21} /></span>
+          <h1 className="text-xl font-semibold tracking-tight">{settings?.companyName || "Doc.AI"}</h1>
         </div>
         <nav className="flex-1 p-4 space-y-1">
           <button
@@ -427,31 +435,32 @@ export default function App() {
             <TerminalSquare className="w-5 h-5" />
             API та інтеграції
           </button>
+          <div className="nav-divider"/>
+          <button disabled={isParsing || isQueueActive} onClick={() => setActiveTab('settings')} className={cn('w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium', activeTab === 'settings' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700 hover:bg-gray-100')}><SettingsIcon size={18}/>Налаштування</button>
+          <button onClick={() => setActiveTab('deployment')} className={cn('w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium', activeTab === 'deployment' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700 hover:bg-gray-100')}><Building2 size={18}/>Впровадження</button>
         </nav>
-        <div className="sidebar-note"><div className="eyebrow">DOCUMENT INTELLIGENCE</div><p>Менше рутини.<br/>Більше змісту.</p><span>Документи → структуровані дані</span></div>
-        <div className="sidebar-profile"><span className="avatar">D</span><div><strong>Doc.AI Workspace</strong><small>Ваш простір для документів</small></div></div>
+        <div className="sidebar-profile"><span className="avatar"><Building2 size={16}/></span><div><strong>{settings?.companyName || 'Doc.AI'}</strong><small>{health?.storage === 'local' ? 'Локальна інсталяція' : 'Робочий простір'}</small></div></div>
       </aside>
 
       {/* Main Content */}
       <main className="main-content flex-1 overflow-y-auto">
-        <header className="topbar"><span>Workspace <span className="breadcrumb">/ {({ parse: 'Обробка документів', types: 'Шаблони', history: 'Історія', api: 'API' })[activeTab]}</span></span><span className="connection"><i className={health ? 'online' : ''}/>{health ? health.storage === 'local' ? 'Локальний простір' : 'Сервер підключено' : 'Підключення…'}</span></header>
+        <header className="topbar"><span>Документи <span className="breadcrumb">/ {({ parse: 'Обробка документів', types: 'Шаблони', history: 'Історія', api: 'API', settings: 'Налаштування', deployment: 'Впровадження' })[activeTab]}</span></span><span className="connection"><i className={health ? 'online' : ''}/>{health ? health.storage === 'local' ? 'Локальний простір' : 'Сервер підключено' : 'Підключення…'}</span></header>
         <div className="workspace max-w-5xl mx-auto p-8">
 
           {error && <div role="alert" className="error-banner"><AlertCircle size={18}/><span>{error}</span><button aria-label="Закрити помилку" onClick={() => setError(null)}><X size={16}/></button></div>}
           {notice && <div role="status" className="toast">{notice}</div>}
+          {activeTab === 'settings' && (settings ? <Settings data={settings} onChange={applySettings}/> : <p>Завантаження налаштувань…</p>)}
+          {activeTab === 'deployment' && <DeploymentGuide/>}
           {/* PARSE TAB */}
           {activeTab === 'parse' && (
             <div className="parse-workspace space-y-6">
-              <div className="page-heading"><div><div className="eyebrow">РОЗУМНА РОБОТА З ДОКУМЕНТАМИ</div>
-                <h2>Від файлу — до даних<span>.</span></h2>
-                <p>Завантажуйте документи. Отримуйте структуру. Зосередьтеся на важливому.</p></div><span className="heading-symbol"><Sparkles/></span>
-              </div>
+              <div className="page-heading"><div><div className="eyebrow">ДОКУМЕНТООБІГ</div><h2>Обробка документів</h2><p>Завантажте файли та виберіть правила витягування даних.</p></div><button className="secondary-button" disabled={isParsing || isQueueActive} onClick={()=>setActiveTab('settings')}><SettingsIcon size={16}/>Підключення AI</button></div>
               <div className="stats-grid">
                 <div><span className="stat-icon"><FileText/></span><div><small>В історії</small><strong>{documents.length}<em>документів</em></strong></div></div>
                 <div><span className="stat-icon"><LayoutTemplate/></span><div><small>Готові до роботи</small><strong>{documentTypes.length}<em>шаблони</em></strong></div></div>
                 <div><span className="stat-icon"><CheckCircle2/></span><div><small>У поточній сесії</small><strong>{queue.filter(i => i.status === 'done').length}<em>оброблено</em></strong></div></div>
               </div>
-              {health && !health.aiConfigured && <div className="setup-banner"><Sparkles size={20}/><div><strong>Простір готовий. Підключіть AI для розпізнавання.</strong><p>Додайте GEMINI_API_KEY у .env.local та перезапустіть сервер. Завантаження й шаблони вже доступні.</p></div></div>}
+              {health && !health.aiConfigured && <div className="setup-banner"><AlertCircle size={18}/><div><strong>AI-провайдер не підключений</strong><p>Додайте API-ключ OpenAI, Gemini або Anthropic у налаштуваннях.</p></div><button className="secondary-button" onClick={()=>setActiveTab('settings')}>Налаштувати</button></div>}
               <div className="parse-grid"><div>
 
               <div className="upload-card bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -554,6 +563,7 @@ export default function App() {
                       className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
                       placeholder="Опишіть, які дані потрібно витягнути..."
                     />
+                    <PromptGuide onApply={setCustomPrompt} disabled={isParsing || isQueueActive}/>
                   </div>
                 )}
 
@@ -581,7 +591,7 @@ export default function App() {
 
 
               </div></div>
-              <aside className="guide-panel"><div className="eyebrow">ЯК ЦЕ ПРАЦЮЄ</div><h3>Ваш документ.<br/>Потрібні вам дані.</h3><p>Від рахунків і договорів до таблиць та сканів — один зрозумілий процес.</p><ol><li><span>1</span><div><strong>Додайте файли</strong><p>Один документ або цілий пакет.</p></div></li><li><span>2</span><div><strong>Оберіть, що витягти</strong><p>Шаблон або власна інструкція.</p></div></li><li><span>3</span><div><strong>Заберіть результат</strong><p>Перегляньте та завантажте JSON.</p></div></li></ol><div className="guide-footer"><Code size={18}/><span>Інтегруйте у ваш процес</span><button aria-label="Відкрити API" onClick={() => setActiveTab('api')}><ArrowUpRight size={18}/></button></div></aside>
+              <aside className="execution-panel corporate-panel"><h3>Параметри обробки</h3><dl><dt>AI-провайдер</dt><dd>{settings ? names[settings.provider] : 'Завантаження…'}</dd><dt>Модель</dt><dd className="mono">{activeProvider?.model || '—'}</dd><dt>Режим</dt><dd>Послідовно, у цій вкладці</dd><dt>Формат результату</dt><dd>JSON</dd><dt>Зберігання</dt><dd>{health?.storage === 'local' ? 'Локальний файл' : health?.storage === 'supabase' ? 'Supabase' : 'Не підключено'}</dd></dl><p>Перевірте витягнуті дані перед передачею в облік або оплату.</p><button className="text-button" onClick={()=>setActiveTab('deployment')}>Як підготувати до роботи в компанії →</button></aside>
               </div>
             </div>
           )}
@@ -591,7 +601,7 @@ export default function App() {
             <div className="space-y-8">
               <div>
                 <h2 className="text-2xl font-semibold mb-1">Типи документів (Шаблони)</h2>
-                <p className="text-gray-500 text-sm">Створюйте шаблони для різних типів документів з попередньо налаштованими промптами та окремими API ендпоінтами.</p>
+                <p className="text-gray-500 text-sm">Створюйте шаблони для різних типів документів з інструкціями та API-адресою для кожного шаблону.</p>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -610,7 +620,8 @@ export default function App() {
                         onChange={(e) => {
                           setNewTypeName(e.target.value);
                           if (!editingTypeId && (!newTypeSlug || newTypeSlug === newTypeName.toLowerCase().replace(/[^a-z0-9-]/g, '-'))) {
-                            setNewTypeSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'));
+                            const candidate = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/^-+|-+$/g, '');
+                            setNewTypeSlug(candidate);
                           }
                         }}
                         className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -638,6 +649,7 @@ export default function App() {
                         className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
                         placeholder="Витягни наступні поля..."
                       />
+                    <PromptGuide onApply={setNewTypePrompt} disabled={isCreatingType}/>
                     </div>
 
                     <div className="flex gap-2">
@@ -789,7 +801,7 @@ export default function App() {
                     <code className="text-sm font-mono text-gray-800">/api/parse/:slug</code>
                   </div>
                   <p className="text-sm text-gray-600 mb-4">
-                    Відправте файл через <code>multipart/form-data</code> на цей ендпоінт.
+                    Одна адреса обслуговує всі файли цього шаблону. Кожен результат має окремий ID. Відправте файл через <code>multipart/form-data</code> на цей ендпоінт.
                     Замість <code>:slug</code> підставте ідентифікатор вашого шаблону (наприклад, <code>invoice</code>).
                   </p>
 
@@ -820,6 +832,7 @@ export default function App() {
                   </pre>
                 </div>
 
+                <div><h3 className="text-lg font-medium mb-2">Отримати збережений результат</h3><code className="text-sm">GET /api/documents/:id</code><p className="text-sm text-gray-600 mt-2">Підставте ID із відповіді на обробку. Ця адреса повертає запис із БД, а не запускає AI повторно.</p><p className="text-sm text-gray-600 mt-2">За замовчуванням використовується провайдер із налаштувань. Поле provider у multipart-запиті дозволяє явно вибрати openai, gemini або anthropic. Ключі залишаються на сервері.</p></div>
                 <div>
                   <h3 className="text-lg font-medium mb-2">Формат відповіді</h3>
                   <p className="text-sm text-gray-600 mb-2">У разі успіху ви отримаєте JSON об'єкт з витягнутими даними та ID запису в базі:</p>

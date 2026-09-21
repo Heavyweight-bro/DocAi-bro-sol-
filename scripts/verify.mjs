@@ -1,3 +1,4 @@
+import http from 'node:http';
 import { spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -7,7 +8,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
 const temp = await mkdtemp(path.join(tmpdir(), 'docai-test-'));
-const server = spawn(process.execPath, ['--import', 'tsx', 'app.ts'], { env: { ...process.env, PORT: '3100', LOCAL_DATA_PATH: path.join(temp, 'data.json') }, stdio: ['ignore', 'pipe', 'pipe'] });
+const server = spawn(process.execPath, ['--import', 'tsx', 'app.ts'], { env: { ...process.env, PORT: '3100', LOCAL_DATA_PATH: path.join(temp, 'data.json'), LOCAL_SETTINGS_DIR: path.join(temp, 'settings') }, stdio: ['ignore', 'pipe', 'pipe'] });
 let browser;
 try {
   await new Promise((resolve, reject) => {
@@ -26,6 +27,10 @@ try {
   assert.equal((await api('/api/types','POST',{name:'QA',slug:'---',prompt:'x'})).status,400);
   assert.equal((await api('/api/types/'+record.id,'PUT',{name:'QA updated',slug:'qa-check',prompt:'Updated'})).status,200);
   assert.equal((await fetch(base + '/api/types/'+record.id,{method:'DELETE'})).status,200);
+  assert.equal((await api('/api/settings','PUT',{companyName:'Blocked'})).status,403);
+  assert.equal((await fetch(base+'/api/settings',{method:'PUT',headers:{'Content-Type':'application/json','X-DocAI-Settings':'1',Origin:'https://evil.example'},body:'{}'})).status,403);
+  const wrongHostStatus = await new Promise((resolve,reject)=>{const req=http.request(base+'/api/settings',{method:'PUT',headers:{'Content-Type':'application/json','X-DocAI-Settings':'1',Host:'evil.example'}},res=>{res.resume();resolve(res.statusCode);});req.on('error',reject);req.end('{}');});
+  assert.equal(wrongHostStatus,403);
   const oversized = new FormData(); oversized.append('document',new Blob([new Uint8Array(10*1024*1024+1)]),'too-big.pdf');
   assert.equal((await fetch(base+'/api/parse',{method:'POST',body:oversized})).status,413);
   console.log('PASS: API health, template CRUD, duplicate/invalid slugs and 10 MB upload limit.');
@@ -33,8 +38,8 @@ try {
   browser = await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH || undefined,args:['--no-sandbox','--disable-dev-shm-usage','--use-gl=angle','--use-angle=swiftshader']});
   const page = await browser.newPage({ viewport:{width:1440,height:1050} });
   const errors=[]; page.on('pageerror',e=>errors.push(e.message));
-  await page.goto(base); await page.getByText('Від файлу — до даних.').waitFor();
-  await page.getByText('Простір готовий. Підключіть AI для розпізнавання.').waitFor();
+  await page.goto(base); await page.getByRole('heading',{name:'Обробка документів'}).waitFor();
+  await page.getByText('AI-провайдер не підключений').waitFor();
   await page.screenshot({path:'/tmp/docai-desktop.png',fullPage:true});
   await page.locator('input[type=file]').setInputFiles({name:'sample.txt',mimeType:'text/plain',buffer:Buffer.from('Invoice 123')});
   await page.getByText('sample.txt',{exact:true}).waitFor();
@@ -43,7 +48,30 @@ try {
   assert.equal(await page.getByRole('dialog').count(),0);
   await page.getByRole('button',{name:'Шаблони',exact:true}).click(); await page.getByText('Створити новий шаблон').waitFor();
   await page.getByRole('button',{name:'Історія',exact:true}).click(); await page.getByRole('textbox',{name:'Пошук документів'}).fill('missing'); await page.getByText('Нічого не знайдено').waitFor();
+  await page.getByRole('button',{name:'Налаштування',exact:true}).click();
+  await page.getByLabel('Назва компанії').fill('Acme Operations');
+  await page.getByRole('button',{name:'Зберегти простір'}).click();
+  await page.getByRole('heading',{name:'Acme Operations',exact:true}).waitFor();
+  const openaiForm=page.locator('form').filter({has:page.getByRole('heading',{name:'OpenAI · ChatGPT'})});
+  await page.getByLabel('API-ключ openai',{exact:true}).fill('test-only-ui-key-12345');
+  await openaiForm.getByRole('button',{name:'Зберегти',exact:true}).click();
+  await openaiForm.getByText('Ключ збережено',{exact:true}).waitFor();
+  assert.equal(await page.getByLabel('API-ключ openai',{exact:true}).inputValue(),'');
+  const configuration=await (await fetch(base+'/api/settings')).json();
+  assert(!JSON.stringify(configuration).includes('test-only-ui-key'));
+  page.once('dialog',d=>d.accept());
+  await openaiForm.getByRole('button',{name:'Видалити ключ'}).click();
+  await openaiForm.getByText('Не налаштовано',{exact:true}).waitFor();
+  await page.screenshot({path:'/tmp/docai-settings.png',fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
+  await page.setViewportSize({width:1440,height:1050});
+  await page.getByRole('button',{name:'Впровадження',exact:true}).click();
+  await page.getByRole('heading',{name:'Як працює API шаблону'}).waitFor();
   await page.getByRole('button',{name:'Робочий простір',exact:true}).click();
+  await page.getByText('Як написати інструкцію для розпізнавання',{exact:true}).click();
+  await page.getByRole('button',{name:'Рахунок',exact:true}).click();
+  assert((await page.getByLabel('Інструкція для AI').inputValue()).includes('invoice_number'));
   await page.setViewportSize({width:390,height:844});
   await page.screenshot({path:'/tmp/docai-mobile.png',fullPage:true});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
