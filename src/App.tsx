@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Upload, FileText, FileSpreadsheet, Image as ImageIcon, File, Loader2, CheckCircle2, AlertCircle, Database, Code, LayoutTemplate, History, Plus, Trash2, TerminalSquare, Eye, X, Search, Download, Copy, Sparkles, ArrowUpRight, RotateCcw, Settings as SettingsIcon, Building2 } from 'lucide-react';
 import Settings, { type SettingsData, names } from './components/Settings';
 import PromptGuide from './components/PromptGuide';
-import DeploymentGuide from './components/DeploymentGuide';
 import { cn } from './lib/utils';
 
 
@@ -34,7 +33,7 @@ type QueueItem = {
 };
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'parse' | 'types' | 'history' | 'api' | 'settings' | 'deployment'>('parse');
+  const [activeTab, setActiveTab] = useState<'parse' | 'types' | 'history' | 'api' | 'settings'>('parse');
 
   // Parse State
   const [queue, setQueue] = useState<QueueItem[]>([]);
@@ -437,20 +436,18 @@ export default function App() {
           </button>
           <div className="nav-divider"/>
           <button disabled={isParsing || isQueueActive} onClick={() => setActiveTab('settings')} className={cn('w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium', activeTab === 'settings' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700 hover:bg-gray-100')}><SettingsIcon size={18}/>Налаштування</button>
-          <button onClick={() => setActiveTab('deployment')} className={cn('w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium', activeTab === 'deployment' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700 hover:bg-gray-100')}><Building2 size={18}/>Впровадження</button>
         </nav>
         <div className="sidebar-profile"><span className="avatar"><Building2 size={16}/></span><div><strong>{settings?.companyName || 'Doc.AI'}</strong><small>{health?.storage === 'local' ? 'Локальна інсталяція' : 'Робочий простір'}</small></div></div>
       </aside>
 
       {/* Main Content */}
       <main className="main-content flex-1 overflow-y-auto">
-        <header className="topbar"><span>Документи <span className="breadcrumb">/ {({ parse: 'Обробка документів', types: 'Шаблони', history: 'Історія', api: 'API', settings: 'Налаштування', deployment: 'Впровадження' })[activeTab]}</span></span><span className="connection"><i className={health ? 'online' : ''}/>{health ? health.storage === 'local' ? 'Локальний простір' : 'Сервер підключено' : 'Підключення…'}</span></header>
+        <header className="topbar"><span>Документи <span className="breadcrumb">/ {({ parse: 'Обробка документів', types: 'Шаблони', history: 'Історія', api: 'API', settings: 'Налаштування' })[activeTab]}</span></span><span className="connection"><i className={health ? 'online' : ''}/>{health ? health.storage === 'local' ? 'Локальний простір' : 'Сервер підключено' : 'Підключення…'}</span></header>
         <div className="workspace max-w-5xl mx-auto p-8">
 
           {error && <div role="alert" className="error-banner"><AlertCircle size={18}/><span>{error}</span><button aria-label="Закрити помилку" onClick={() => setError(null)}><X size={16}/></button></div>}
           {notice && <div role="status" className="toast">{notice}</div>}
           {activeTab === 'settings' && (settings ? <Settings data={settings} onChange={applySettings}/> : <p>Завантаження налаштувань…</p>)}
-          {activeTab === 'deployment' && <DeploymentGuide/>}
           {/* PARSE TAB */}
           {activeTab === 'parse' && (
             <div className="parse-workspace space-y-6">
@@ -591,7 +588,7 @@ export default function App() {
 
 
               </div></div>
-              <aside className="execution-panel corporate-panel"><h3>Параметри обробки</h3><dl><dt>AI-провайдер</dt><dd>{settings ? names[settings.provider] : 'Завантаження…'}</dd><dt>Модель</dt><dd className="mono">{activeProvider?.model || '—'}</dd><dt>Режим</dt><dd>Послідовно, у цій вкладці</dd><dt>Формат результату</dt><dd>JSON</dd><dt>Зберігання</dt><dd>{health?.storage === 'local' ? 'Локальний файл' : health?.storage === 'supabase' ? 'Supabase' : 'Не підключено'}</dd></dl><p>Перевірте витягнуті дані перед передачею в облік або оплату.</p><button className="text-button" onClick={()=>setActiveTab('deployment')}>Як підготувати до роботи в компанії →</button></aside>
+              <aside className="execution-panel corporate-panel"><h3>Параметри обробки</h3><dl><dt>AI-провайдер</dt><dd>{settings ? names[settings.provider] : 'Завантаження…'}</dd><dt>Модель</dt><dd className="mono">{activeProvider?.model || '—'}</dd><dt>Режим</dt><dd>Послідовно, у цій вкладці</dd><dt>Формат результату</dt><dd>JSON</dd><dt>Зберігання</dt><dd>{health?.storage === 'local' ? 'Локальний файл' : health?.storage === 'supabase' ? 'Supabase' : 'Не підключено'}</dd></dl><p>Перевірте витягнуті дані перед передачею в облік або оплату.</p></aside>
               </div>
             </div>
           )}

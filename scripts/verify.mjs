@@ -66,8 +66,8 @@ try {
   await page.setViewportSize({width:390,height:844});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
   await page.setViewportSize({width:1440,height:1050});
-  await page.getByRole('button',{name:'Впровадження',exact:true}).click();
-  await page.getByRole('heading',{name:'Як працює API шаблону'}).waitFor();
+  assert.equal(await page.getByRole('button',{name:'Впровадження',exact:true}).count(),0);
+  assert.equal(await page.getByText('Як підготувати до роботи в компанії').count(),0);
   await page.getByRole('button',{name:'Робочий простір',exact:true}).click();
   await page.getByText('Як написати інструкцію для розпізнавання',{exact:true}).click();
   await page.getByRole('button',{name:'Рахунок',exact:true}).click();
