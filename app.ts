@@ -337,9 +337,16 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'API-адресу н
 const setupStaticAndVite = async () => {
   if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
     try {
+      const port = Number(process.env.PORT) || 3000;
       const { createServer: createViteServer } = await import("vite");
       const vite = await createViteServer({
-        server: { middlewareMode: true },
+        server: {
+          middlewareMode: true,
+          // Cursor Simple Browser / port forwards may use non-localhost Host headers.
+          allowedHosts: true,
+          // Do not set hmr.port here — it would bind a second listener on the same PORT.
+          hmr: process.env.DISABLE_HMR === 'true' ? false : { clientPort: port },
+        },
         appType: "spa",
       });
       app.use(vite.middlewares);
@@ -358,8 +365,6 @@ const setupStaticAndVite = async () => {
   }
 };
 
-setupStaticAndVite();
-
 // --- Error Handling ---
 app.use('/api', (err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('API Error:', err);
@@ -370,11 +375,23 @@ app.use('/api', (err: any, req: express.Request, res: express.Response, next: ex
 });
 
 // --- Start ---
+const start = async () => {
+  await setupStaticAndVite();
+  if (!process.env.VERCEL) {
+    const port = Number(process.env.PORT) || 3000;
+    app.listen(port, process.env.HOST || (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1"), () => {
+      console.log(`Server running on http://localhost:${port}`);
+    });
+  }
+};
+
 if (!process.env.VERCEL) {
-  const port = Number(process.env.PORT) || 3000;
-  app.listen(port, process.env.HOST || (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1"), () => {
-    console.log(`Server running on http://localhost:${port}`);
+  start().catch((error) => {
+    console.error('Failed to start server:', error);
+    process.exit(1);
   });
+} else {
+  setupStaticAndVite().catch((error) => console.error('Vite/static setup failed:', error));
 }
 
 export default app;
