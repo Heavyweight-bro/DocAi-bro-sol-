@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Doc.AI — первинні документи в облік без ручного вводу</title>
+  <meta name="description" content="Doc.AI розпізнає рахунки, акти, накладні й договори, перевіряє ЄДРПОУ, IBAN і суми та передає готові дані в 1С, BAS чи CRM. Для бухгалтерій, фінансових відділів і аутсорс-компаній.">
+  <meta name="theme-color" content="#182331">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Onest:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="nav show" id="nav">
+    <a class="logo" href="#top" aria-label="Doc.AI — на початок"><span class="logo-mark" aria-hidden="true">✦</span><span>Doc<b>.AI</b></span></a>
+    <nav class="nav-links" aria-label="Розділи">
+      <a href="#vyhoda">Вигода</a>
+      <a href="#kalkuliator">Калькулятор</a>
+      <a href="#dlia-koho">Для кого</a>
+      <a href="#kontrol">Контроль</a>
+      <a href="#integratsii">Інтеграції</a>
+      <a href="#vprovadzhennia">Впровадження</a>
+    </nav>
+    <div class="nav-actions">
+      <a class="btn btn-ghost btn-sm nav-video" href="#video">Відео</a>
+      <a class="btn btn-primary btn-sm" data-app-link href="http://localhost:3000">Спробувати</a>
+      <button class="menu-btn" type="button" aria-label="Меню" aria-expanded="false" aria-controls="mobile-menu"><span></span><span></span></button>
+    </div>
+  </header>
+  <div class="mobile-menu" id="mobile-menu" hidden>
+    <a href="#vyhoda">Вигода</a><a href="#kalkuliator">Калькулятор</a><a href="#dlia-koho">Для кого</a><a href="#kontrol">Контроль</a><a href="#integratsii">Інтеграції</a><a href="#vprovadzhennia">Впровадження</a><a href="#video">Відео</a>
+    <a class="btn btn-primary" data-app-link href="http://localhost:3000">Спробувати на своїх документах</a>
+  </div>
+
+  <main id="top">
+    <!-- HERO: the first screen must sell on its own -->
+    <section class="hero grid-bg" id="hero">
+      <div class="container hero-copy">
+        <div class="eyebrow-pill"><span class="pulse" aria-hidden="true"></span>AI-обробка первинних документів для бізнесу</div>
+        <h1 class="display">Первинка — в облік<br><em>без ручного вводу</em></h1>
+        <p class="lead hero-lead">Doc.AI розпізнає рахунки, акти, накладні й договори, <strong>сам перевіряє ЄДРПОУ, IBAN і суми</strong> та передає готові дані в 1С, BAS чи CRM. Ваша команда лише підтверджує результат — замість того щоб годинами передруковувати PDF.</p>
+        <div class="cta-row">
+          <a class="btn btn-primary btn-lg glow" data-app-link href="http://localhost:3000">Спробувати на своїх документах</a>
+          <a class="btn btn-ghost btn-lg" href="#kalkuliator">Порахувати економію</a>
+        </div>
+        <ul class="trust-row" aria-label="Ключові переваги">
+          <li><span class="tick" aria-hidden="true">✓</span>Дані залишаються на вашому сервері</li>
+          <li><span class="tick" aria-hidden="true">✓</span>Помилки в реквізитах — до оплати, а не після</li>
+          <li><span class="tick" aria-hidden="true">✓</span>Excel і CSV для 1С / BAS, webhook для CRM</li>
+        </ul>
+      </div>
+      <div class="container">
+        <figure class="screen screen-hero">
+          <div class="screen-bar"><i></i><i></i><i></i><span>Doc.AI · перевірка рахунку перед оплатою</span></div>
+          <img src="assets/03-review-invalid.jpg" alt="Екран перевірки Doc.AI: оригінал рахунку поруч із полями, помилковий ЄДРПОУ і невірний підсумок підсвічені" width="1920" height="1080" fetchpriority="high">
+          <div class="hero-callout c1"><b>ЄДРПОУ не пройшов перевірку</b><small>одна цифра розпізнана з помилкою</small></div>
+          <div class="hero-callout c2"><b>Сума рядків ≠ підсумок</b><small>документ не піде в облік без виправлення</small></div>
+        </figure>
+      </div>
+    </section>
+
+    <!-- PAIN → GAIN -->
+    <section class="section" id="vyhoda">
+      <div class="container">
+        <div class="sec-head reveal">
+          <div class="sec-label">/ скільки коштує ручний ввід</div>
+          <div>
+            <h2>Ручне введення первинки — це прихована стаття витрат</h2>
+            <p class="lead small">Її не видно в бюджеті, але вона щомісяця забирає години кваліфікованих людей, створює ризик помилкових платежів і гальмує закриття періоду.</p>
+          </div>
+        </div>
+        <div class="pain-grid reveal">
+          <article class="pain">
+            <div class="pain-top"><span class="pain-ico">⏱</span><span class="mono-label">час</span></div>
+            <h3>Бухгалтер друкує замість того, щоб аналізувати</h3>
+            <p class="was">Було: кожен рахунок вручну — номер, дата, контрагент, позиції, суми.</p>
+            <p class="now">З Doc.AI: поля заповнені, людина лише звіряє й натискає «Підтвердити».</p>
+          </article>
+          <article class="pain">
+            <div class="pain-top"><span class="pain-ico">₴</span><span class="mono-label">гроші</span></div>
+            <h3>Одна цифра в IBAN — і платіж іде не туди</h3>
+            <p class="was">Було: помилку помічають після повернення коштів або звернення контрагента.</p>
+            <p class="now">З Doc.AI: контрольні суми ЄДРПОУ та IBAN і звірка сум ловлять її до оплати.</p>
+          </article>
+          <article class="pain">
+            <div class="pain-top"><span class="pain-ico">▦</span><span class="mono-label">масштаб</span></div>
+            <h3>Кінець місяця = завал документів</h3>
+            <p class="was">Було: пікове навантаження, переробки, тимчасові люди на введення.</p>
+            <p class="now">З Doc.AI: пакет обробляється в черзі на сервері, поки команда працює далі.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ROI CALCULATOR -->
+    <section class="section section-white" id="kalkuliator">
+      <div class="container">
+        <div class="sec-head reveal">
+          <div class="sec-label">/ калькулятор економії</div>
+          <div>
+            <h2>Порахуйте, скільки годин і гривень поверне ваша команда</h2>
+            <p class="lead small">Підставте свої цифри. Розрахунок прозорий: різниця між ручним введенням і перевіркою готових полів, мінус витрати на AI.</p>
+          </div>
+        </div>
+        <div class="roi reveal" data-roi>
+          <form class="roi-inputs" onsubmit="return false">
+            <label><span>Документів на місяць</span><input type="number" name="docs" min="1" step="10" value="500" inputmode="numeric"></label>
+            <label><span>Хвилин на ручне введення одного документа</span><input type="number" name="manual" min="0.5" step="0.5" value="4" inputmode="decimal"></label>
+            <label><span>Хвилин на перевірку з Doc.AI</span><input type="number" name="review" min="0" step="0.5" value="1" inputmode="decimal"></label>
+            <label><span>Вартість години співробітника, грн</span><input type="number" name="rate" min="0" step="10" value="250" inputmode="numeric"></label>
+            <label><span>Витрати на AI за документ, грн</span><input type="number" name="ai" min="0" step="0.1" value="0.5" inputmode="decimal"><small>Точну цифру покаже розділ «Аналітика» в кабінеті.</small></label>
+          </form>
+          <div class="roi-result" aria-live="polite">
+            <div class="roi-big"><small>Звільнений час на місяць</small><strong data-out="hours">—</strong></div>
+            <div class="roi-row"><div><small>Економія на місяць</small><b data-out="month">—</b></div><div><small>Економія на рік</small><b data-out="year">—</b></div></div>
+            <div class="roi-row"><div><small>Це приблизно</small><b data-out="fte">—</b></div><div><small>Витрати на AI на місяць</small><b data-out="aicost">—</b></div></div>
+            <p class="roi-note">Оцінка на основі ваших вхідних даних. Реальний результат залежить від якості сканів і типів документів — перевірте на пілоті з власною первинкою.</p>
+            <a class="btn btn-light full" data-app-link href="http://localhost:3000">Перевірити на своїх документах</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- AUDIENCE -->
+    <section class="section" id="dlia-koho">
+      <div class="container">
+        <div class="sec-head reveal">
+          <div class="sec-label">/ для кого</div>
+          <div>
+            <h2>Для команд, у яких документів більше, ніж рук</h2>
+            <p class="lead small">Один інструмент — різні сценарії. Для кожного типу документа налаштовується свій шаблон полів і правил перевірки.</p>
+          </div>
+        </div>
+        <div class="audience reveal">
+          <article class="aud"><span class="aud-ico">▤</span><h3>Бухгалтерія</h3><p>Вхідні рахунки й акти потрапляють в облік уже заповненими. Менше рутини в кінці місяця, швидше закриття періоду.</p></article>
+          <article class="aud"><span class="aud-ico">₴</span><h3>Фінансовий відділ</h3><p>Реквізити перевірені до оплати, кожне рішення записане в журнал. Прозорі витрати й контроль без мікроменеджменту.</p></article>
+          <article class="aud"><span class="aud-ico">⇄</span><h3>Логістика й закупівлі</h3><p>Накладні, ТТН і рахунки постачальників розбираються пакетами — позиції, кількості й суми одразу в таблиці.</p></article>
+          <article class="aud"><span class="aud-ico">◎</span><h3>Аутсорс-бухгалтерія</h3><p>Більше клієнтів тим самим складом: документи від різних компаній обробляються за єдиними шаблонами.</p></article>
+          <article class="aud"><span class="aud-ico">{ }</span><h3>ІТ та інтегратори</h3><p>Стабільний API з чергою, підписані webhook-и й Postgres. Вбудовується в CRM, ERP чи портал постачальників.</p></article>
+          <article class="aud aud-cta"><h3>Не бачите свій сценарій?</h3><p>Якщо документ можна описати полями — його можна автоматизувати власним шаблоном без програміста.</p><a class="btn btn-light" href="#vprovadzhennia">Як почати →</a></article>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIDEO -->
+    <section class="section section-white" id="video">
+      <div class="container">
+        <div class="sec-head reveal">
+          <div class="sec-label">/ відео · 2 хв 40 с</div>
+          <div>
+            <h2>Весь шлях документа — менш ніж за три хвилини</h2>
+            <p class="lead small">Від завантаження пакета до підтвердженого рахунку в обліку — на реальних екранах продукту.</p>
+          </div>
+        </div>
+        <div class="video-frame reveal" data-video>
+          <video controls preload="metadata" playsinline poster="media/poster.jpg">
+            <source src="media/docai-presentation.mp4" type="video/mp4">
+          </video>
+          <div class="video-empty" hidden>
+            <span class="play" aria-hidden="true"></span>
+            <strong>Місце під відео</strong>
+            <small>Покладіть файл у <code>site/media/docai-presentation.mp4</code></small>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CAPABILITIES -->
+    <section class="section" id="mozhlyvosti">
+      <div class="container">
+        <div class="bento-head reveal"><div class="sec-label">/ що отримує бізнес</div><div class="mono-muted">рахунки · акти · накладні · договори · платіжки</div></div>
+        <div class="bento reveal">
+          <article class="tile tile-accent tile-big">
+            <div class="scan" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+            <span class="pill-live">● Перевірка працює на кожному документі</span>
+            <h3>Дані, яким можна довіряти без повторної перевірки</h3>
+            <p>Кожен документ розпізнаний, звірений за правилами обліку й підтверджений відповідальною людиною. Хто, коли і що змінив — видно в журналі.</p>
+          </article>
+          <article class="tile"><span class="tile-ico">▤</span><div class="stat">10</div><p>форматів: PDF, скани й фото, Word, Excel, CSV — приймаємо первинку в тому вигляді, в якому вона приходить</p></article>
+          <article class="tile"><span class="tile-ico">◎</span><h4>Свої документи — свої правила</h4><p>Шаблон полів і перевірок для будь-якого типу документа налаштовується в інтерфейсі.</p></article>
+          <article class="tile tile-white">
+            <span class="tag">інтеграції</span>
+            <h4>1С, BAS, CRM і будь-яка система з API</h4>
+            <a class="arrow" href="#integratsii" aria-label="До інтеграцій">↗</a>
+          </article>
+          <article class="tile tile-dots"><div class="stat">3</div><div class="mono-muted">AI-провайдери на вибір</div><p>OpenAI, Gemini, Anthropic — без прив’язки до одного постачальника</p></article>
+          <article class="tile tile-wide"><div class="stat">3</div><div class="mono-muted">ролі доступу</div><p>Перегляд · оператор · адміністратор — кожен співробітник бачить і робить лише те, що йому дозволено.</p></article>
+          <article class="tile tile-wide"><span class="tile-ico">≡</span><h4>Прозорі витрати на AI</h4><p>Вартість кожного документа, моделі й точність з першого разу — у розділі аналітики. Сильніша модель вмикається лише тоді, коли дешевша не впоралась.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <!-- DOCUMENT PATH (navy band) -->
+    <section class="section light grid-bg-light" id="shliakh">
+      <div class="container">
+        <div class="sec-label dark reveal">/ шлях документа</div>
+        <h2 class="reveal">Рахунок прийшов — дані вже готові до проведення</h2>
+        <p class="lead small dark reveal">Поки бухгалтер відкриває наступний лист, попередній рахунок уже розпізнаний, перевірений і чекає одного кліку.</p>
+        <ol class="timeline reveal">
+          <li><span class="t">01</span><b>Файл надійшов</b><small>з браузера чи вашої системи через API</small></li>
+          <li><span class="t">02</span><b>AI заповнює поля</b><small>за шаблоном вашого документа</small></li>
+          <li><span class="t">03</span><b>Система перевіряє</b><small>суми, ЄДРПОУ, IBAN, дати</small></li>
+          <li><span class="t">04</span><b>Людина підтверджує</b><small>оригінал поруч із полями</small></li>
+          <li class="on"><span class="t">05</span><b>Дані в обліку й CRM</b><small>Excel · CSV · webhook</small></li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- CONTROL -->
+    <section class="section rounded-top" id="kontrol">
+      <div class="container">
+        <div class="sec-head reveal">
+          <div class="sec-label">/ контроль і відповідальність</div>
+          <div>
+            <h2>Автоматизація, яку не страшно показати аудитору</h2>
+            <p class="lead small">AI не проводить документи сам. Він готує дані, система перевіряє їх за правилами обліку, а рішення приймає відповідальна людина — і все це записано.</p>
+          </div>
+        </div>
+        <div class="checks reveal">
+          <div class="panel">
+            <div class="panel-title">Що перевіряється в кожному рахунку</div>
+            <ul class="check-list">
+              <li><span class="dot red"></span><div><b>ЄДРПОУ / РНОКПП контрагента</b><small>контрольна сума коду</small></div><span class="lvl err">блокує</span></li>
+              <li><span class="dot red"></span><div><b>IBAN отримувача</b><small>довжина й контрольна сума</small></div><span class="lvl err">блокує</span></li>
+              <li><span class="dot red"></span><div><b>Сума позицій + ПДВ = до сплати</b><small>з точністю до копійки</small></div><span class="lvl err">блокує</span></li>
+              <li><span class="dot red"></span><div><b>Дата, валюта, обов’язкові поля</b><small>за шаблоном документа</small></div><span class="lvl err">блокує</span></li>
+              <li><span class="dot amber"></span><div><b>Кількість × ціна = сума рядка</b><small>можливе округлення</small></div><span class="lvl warn">увага</span></li>
+              <li><span class="dot amber"></span><div><b>Нетипова ставка ПДВ</b><small>не 20 %, 14 % чи 7 %</small></div><span class="lvl warn">увага</span></li>
+            </ul>
+          </div>
+          <div class="control-side">
+            <figure class="screen screen-tilt">
+              <img src="assets/04-review-approved.jpg" alt="Виправлений і підтверджений рахунок у Doc.AI" loading="lazy" width="1920" height="1080">
+            </figure>
+            <ul class="control-points">
+              <li><b>Підтверджене не змінити</b><span>Після підтвердження документ заморожений.</span></li>
+              <li><b>Журнал дій</b><span>Хто завантажив, виправив і підтвердив.</span></li>
+              <li><b>Оригінал AI зберігається</b><span>Видно, що саме виправила людина.</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HOW IT WORKS -->
+    <section class="section" id="yak-pratsyuye">
+      <div class="container">
+        <div class="sec-head reveal">
+          <div class="sec-label">/ як це працює<br><span class="mono-muted" data-step-counter>01 — 04</span></div>
+          <div>
+            <h2>Чотири кроки — і людина потрібна лише на останньому</h2>
+            <p class="lead small">Наведіть на крок, щоб побачити відповідний екран продукту.</p>
+          </div>
+        </div>
+        <div class="steps reveal" role="tablist" aria-label="Кроки">
+          <button class="step on" role="tab" aria-selected="true" data-img="assets/02-workspace.jpg"><span class="n">01</span><span class="step-body"><b>Завантажте пакет</b><small>Десятки файлів за раз. Обробка йде на сервері — вкладку можна закрити.</small></span></button>
+          <button class="step" role="tab" aria-selected="false" data-img="assets/05-templates.jpg"><span class="n">02</span><span class="step-body"><b>Оберіть шаблон</b><small>Готові рахунок і акт або свій шаблон для будь-якого документа.</small></span></button>
+          <button class="step" role="tab" aria-selected="false" data-img="assets/03-review-invalid.jpg"><span class="n">03</span><span class="step-body"><b>Отримайте перевірені поля</b><small>Помилки підсвічені поруч з оригіналом — видно, що саме виправити.</small></span></button>
+          <button class="step" role="tab" aria-selected="false" data-img="assets/04-review-approved.jpg"><span class="n">04</span><span class="step-body"><b>Підтвердіть і передайте</b><small>Один клік — і дані йдуть в облік чи CRM.</small></span></button>
+        </div>
+        <figure class="screen reveal" id="step-screen">
+          <img src="assets/02-workspace.jpg" alt="Крок процесу в інтерфейсі Doc.AI" loading="lazy" width="1920" height="1080">
+        </figure>
+      </div>
+    </section>
+
+    <div class="marquee" aria-hidden="true">
+      <div class="marquee-track"><span>Рахунки</span><span class="accent">ЄДРПОУ</span><span>Акти</span><span class="accent">IBAN</span><span>Накладні</span><span class="accent">Контроль</span><span>Договори</span><span class="accent">1С · BAS</span><span>Рахунки</span><span class="accent">ЄДРПОУ</span><span>Акти</span><span class="accent">IBAN</span><span>Накладні</span><span class="accent">Контроль</span><span>Договори</span><span class="accent">1С · BAS</span></div>
+    </div>
+
+    <!-- INTEGRATIONS -->
+    <section class="section" id="integratsii">
+      <div class="container">
+        <div class="sec-head reveal">
+          <div class="sec-label">/ інтеграції</div>
+          <div>
+            <h2>Працює з тим, що у вас уже є</h2>
+            <p class="lead small">Не потрібно міняти облікову систему чи CRM. Doc.AI стає точкою контролю між документом, що прийшов, і системою, куди він має потрапити.</p>
+          </div>
+        </div>
+        <div class="flow-diagram reveal">
+          <div class="flow-col">
+            <div class="mono-label">звідки беремо</div>
+            <span class="node">⇪ Завантаження в кабінеті</span>
+            <span class="node">{ } Ваша система через API</span>
+            <span class="node">⚙ Скрипти й RPA-роботи</span>
+          </div>
+          <div class="flow-core"><span class="core-mark">✦</span><div class="mono-label">doc.ai</div></div>
+          <div class="flow-col right">
+            <div class="mono-label">куди кладемо</div>
+            <span class="node">◉ CRM — подія з даними</span>
+            <span class="node">▦ 1С / BAS / M.E.Doc — Excel, CSV</span>
+            <span class="node">≡ ERP — JSON за ID</span>
+          </div>
+          <svg class="flow-lines" viewBox="0 0 1000 220" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M300 50 C 420 50, 440 110, 500 110"/><path d="M300 110 L 500 110"/><path d="M300 170 C 420 170, 440 110, 500 110"/>
+            <path d="M500 110 C 560 110, 580 50, 700 50"/><path d="M500 110 L 700 110"/><path d="M500 110 C 560 110, 580 170, 700 170"/>
+          </svg>
+        </div>
+        <div class="cards-3 reveal">
+          <article class="card card-outline"><div class="mono-label accent">облік</div><h3>1С, BAS, M.E.Doc</h3><ul class="bullets"><li>CSV з «;» і десятковою комою</li><li>Кодування, яке коректно відкривається</li><li>Реєстр документів і позицій у Excel</li></ul></article>
+          <article class="card"><div class="mono-label">crm</div><h3>Дані приходять самі</h3><p>Після підтвердження CRM отримує подію з полями документа. Якщо CRM недоступна — повторні спроби протягом доби.</p><div class="mini-chips"><span>webhook</span><span>підпис HMAC</span></div></article>
+          <article class="card"><div class="mono-label">розробникам</div><h3>API з чергою</h3><p>Файл ставиться в чергу одним запитом, повторні запити не створюють дублів. Документація в кабінеті.</p><div class="mini-chips"><span>REST v1</span><span>Postgres</span></div></article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ANALYTICS -->
+    <section class="section section-white" id="analityka">
+      <div class="container split-2">
+        <div class="reveal">
+          <div class="sec-label">/ прозорі витрати</div>
+          <h2>Ви точно знаєте, скільки коштує кожен документ</h2>
+          <p class="lead small">Жодних «чорних скриньок» у бюджеті: аналітика показує витрати на AI, обсяги й якість розпізнавання — по днях, моделях і типах документів.</p>
+          <ul class="bullets big">
+            <li>Вартість обробки одного документа</li>
+            <li>Частка документів, підтверджених без правок</li>
+            <li>Дорожча модель — лише коли перевірка не пройдена</li>
+          </ul>
+        </div>
+        <figure class="screen reveal"><img src="assets/06-analytics.jpg" alt="Аналітика витрат і якості в Doc.AI" loading="lazy" width="1920" height="1080"></figure>
+      </div>
+    </section>
+
+    <!-- IMPLEMENTATION -->
+    <section class="section" id="vprovadzhennia">
+      <div class="container">
+        <div class="sec-head reveal">
+          <div class="sec-label">/ впровадження</div>
+          <div>
+            <h2>Почніть з пілоту на власних документах</h2>
+            <p class="lead small">Без масштабного проєкту й зміни процесів: один відділ, один тип документа, реальна первинка — і ви бачите результат у цифрах.</p>
+          </div>
+        </div>
+        <ol class="pilot reveal">
+          <li><span class="n">01</span><b>Запуск</b><p>Розгортаємо Doc.AI на вашому сервері або в хмарі, підключаємо обраного AI-провайдера.</p></li>
+          <li><span class="n">02</span><b>Шаблон</b><p>Налаштовуємо поля й перевірки під ваш документ — рахунок, акт, накладну.</p></li>
+          <li><span class="n">03</span><b>Пілот</b><p>Проганяємо документи за минулі тижні: точність, час на перевірку, витрати.</p></li>
+          <li><span class="n">04</span><b>Масштаб</b><p>Підключаємо 1С / BAS чи CRM, додаємо користувачів і нові типи документів.</p></li>
+        </ol>
+        <div class="plans reveal">
+          <article class="plan">
+            <div class="mono-label">спробувати</div>
+            <h3>Локально</h3>
+            <p class="plan-sub">Оцінити продукт за один вечір</p>
+            <ul class="bullets"><li>Запуск на одному комп’ютері</li><li>Демо-дані й тестовий вхід</li><li>Усі функції без обмежень</li></ul>
+            <a class="btn btn-ghost full" data-app-link href="http://localhost:3000">Відкрити кабінет</a>
+          </article>
+          <article class="plan plan-hot">
+            <div class="plan-flag">для компаній</div>
+            <div class="mono-label">ваш сервер</div>
+            <h3>Для відділу</h3>
+            <p class="plan-sub">Документи не залишають вашу інфраструктуру</p>
+            <ul class="bullets"><li>Користувачі, ролі й журнал дій</li><li>Черга для великих обсягів</li><li>Інтеграція з обліком і CRM</li></ul>
+            <a class="btn btn-primary full" href="#start">Обговорити пілот</a>
+          </article>
+          <article class="plan">
+            <div class="mono-label">хмара</div>
+            <h3>Без сервера</h3>
+            <p class="plan-sub">Якщо немає власної інфраструктури</p>
+            <ul class="bullets"><li>Розгортання в керованій хмарі</li><li>Автоматична обробка черги</li><li>Секрети лише в захищеному середовищі</li></ul>
+            <a class="btn btn-ghost full" href="#faq">Що потрібно</a>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="section section-white" id="faq">
+      <div class="container narrow">
+        <div class="sec-label reveal">/ питання керівників</div>
+        <h2 class="reveal">Відповіді на те, що питають першим</h2>
+        <div class="faq reveal">
+          <details open><summary>Чи замінить Doc.AI бухгалтера?</summary><p>Ні — і не має. Він забирає механічне введення, а бухгалтер перевіряє й підтверджує. Люди витрачають час на аналіз і розбір виключень замість передруку.</p></details>
+          <details><summary>Чи можна довіряти AI суми й реквізити?</summary><p>Не наосліп — тому в продукт вбудована перевірка. Контрольні суми ЄДРПОУ та IBAN, звірка позицій, ПДВ і підсумку ловлять типові помилки розпізнавання, а документ із помилкою не піде в облік без виправлення й підтвердження людиною.</p></details>
+          <details><summary>Де зберігаються наші документи?</summary><p>На вашому сервері або у вашому хмарному проєкті. Для розпізнавання файл надсилається лише обраному вами AI-провайдеру. Ключі доступу зберігаються зашифрованими й не потрапляють у браузер.</p></details>
+          <details><summary>Скільки коштує обробка?</summary><p>Ви платите AI-провайдеру за фактичне використання, без посередників. Точну вартість документа показує розділ «Аналітика», а дорожча модель вмикається лише тоді, коли дешевша не пройшла перевірку.</p></details>
+          <details><summary>Які документи підтримуються?</summary><p>Рахунки й акти мають готові шаблони з перевірками. Для накладних, ТТН, платіжок, договорів чи будь-яких інших документів шаблон налаштовується в інтерфейсі: поля, формати, обов’язковість.</p></details>
+          <details><summary>Як підключити нашу облікову систему чи CRM?</summary><p>Для 1С, BAS і M.E.Doc — вивантаження в Excel і CSV. Для CRM та ERP — події після підтвердження документа й API з чергою. Змінювати ваші системи не потрібно.</p></details>
+        </div>
+      </div>
+    </section>
+
+    <!-- FINAL CTA -->
+    <section class="section final" id="start">
+      <div class="container">
+        <div class="final-card reveal">
+          <div class="sec-label">/ наступний крок</div>
+          <h2>Перевірте на рахунках за минулий тиждень</h2>
+          <p class="lead small">Завантажте реальні документи — і побачите, скільки полів Doc.AI заповнює сам і скільки помилок ручного вводу виявляє перевірка.</p>
+          <div class="cta-row">
+            <a class="btn btn-primary btn-lg" data-app-link href="http://localhost:3000">Спробувати на своїх документах</a>
+            <a class="btn btn-ghost btn-lg" href="#video">Дивитися відео</a>
+          </div>
+          <ul class="trust-row dark">
+            <li><span class="tick" aria-hidden="true">✓</span>Без зміни облікової системи</li>
+            <li><span class="tick" aria-hidden="true">✓</span>Дані на вашому сервері</li>
+            <li><span class="tick" aria-hidden="true">✓</span>Будь-який AI-провайдер</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-grid">
+      <div><a class="footer-cta" href="#start">Автоматизувати первинку <span>↗</span></a><p class="muted footer-sub">Doc.AI — розпізнавання, перевірка й передача первинних документів в облік.</p></div>
+      <div><div class="mono-label">розділи</div><a href="#vyhoda">Вигода</a><a href="#kalkuliator">Калькулятор</a><a href="#kontrol">Контроль</a><a href="#integratsii">Інтеграції</a><a href="#vprovadzhennia">Впровадження</a></div>
+      <div><div class="mono-label">про сторінку</div><p class="muted">Скриншоти містять демонстраційні дані: назви компаній, суми й коди синтетичні. Калькулятор дає оцінку на основі введених вами цифр.</p></div>
+    </div>
+    <div class="wordmark" aria-hidden="true">DOC<span>.AI</span></div>
+    <div class="container footer-bottom"><span>Doc.AI, 2026</span><span>ПЕРВИНКА — В ОБЛІК БЕЗ РУЧНОГО ВВОДУ</span></div>
+  </footer>
+  <script src="app.js"></script>
+</body>
+</html>

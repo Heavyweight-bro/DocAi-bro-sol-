@@ -1,5 +1,5 @@
 {
-  "name": "react-example",
+  "name": "docai",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,7 +10,19 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "test:smoke": "node scripts/verify.mjs"
+    "test:smoke": "node scripts/verify.mjs",
+    "test:schemas": "node --import tsx scripts/verify-schemas.mjs",
+    "test:queue": "node --import tsx scripts/verify-queue.mjs",
+    "user": "node --import tsx scripts/user.mjs",
+    "test:unit": "vitest run && node --import tsx scripts/verify-schemas.mjs && node --import tsx scripts/verify-providers.mjs",
+    "test:it": "node --import tsx scripts/verify-queue.mjs && node --import tsx scripts/verify-worker.mjs && node --import tsx scripts/verify-auth.mjs && node --import tsx scripts/verify-p2.mjs && node scripts/verify.mjs --api-only",
+    "test:e2e": "node scripts/verify.mjs && node --import tsx scripts/verify-ui-auth.mjs && node --import tsx scripts/verify-review.mjs",
+    "test": "npm run lint && npm run test:unit && npm run test:it",
+    "worker": "node --import tsx worker.ts",
+    "test:pg": "scripts/pg-test-env.sh up && POSTGREST_URL=http://127.0.0.1:53000 JWT_SECRET=docai-test-jwt-secret-at-least-32-chars node --import tsx scripts/verify-postgres.mjs; status=$?; scripts/pg-test-env.sh down; exit $status",
+    "demo:seed": "node --import tsx scripts/demo/seed.mjs .data-demo",
+    "demo": "DOCAI_DEMO_ADMIN=true PORT=3001 DOCAI_WORKER=0 LOCAL_DATA_PATH=.data-demo/docai.json LOCAL_SETTINGS_DIR=.data-demo/settings LOCAL_FILES_DIR=.data-demo/files LOCAL_JOBS_PATH=.data-demo/jobs.json node --import tsx app.ts",
+    "site": "node site/serve.mjs 4173"
   },
   "dependencies": {
     "@google/genai": "^1.48.0",
@@ -43,6 +55,7 @@
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "vite": "^6.2.0",
+    "vitest": "^3.2.7"
   }
 }

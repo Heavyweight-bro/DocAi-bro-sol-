@@ -1,0 +1,39 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Start PostgreSQL + PostgREST (Supabase-compatible API)
+        run: scripts/pg-test-env.sh up
+      - name: Postgres-mode integration test (queue, multi-worker, outbox, audit)
+        run: node --import tsx scripts/verify-postgres.mjs
+        env:
+          POSTGREST_URL: http://127.0.0.1:53000
+          JWT_SECRET: docai-test-jwt-secret-at-least-32-chars
